@@ -1,8 +1,8 @@
 # mechanical-game
 
-**Gear Bench** is a sandbox for mechanical drives. Drop parts on a drafting sheet, drag them into mesh, and watch speed, direction, ratio and torque propagate through the train. It runs as a desktop app on Windows and Linux, or as a single HTML file in any browser.
+**Gear Bench** is a sandbox for building machines out of separate mechanical parts. Put gears, shafts, pulleys and mechanisms on a drafting sheet, drag them into mesh, add one or several motors, and read speed, torque and power anywhere in the train. It runs as a desktop app on Windows and Linux, or as a single HTML file in any browser. The interface is in English and Russian.
 
-![Gear Bench showing a belt, a chain, a bevel cross-shaft, a worm gear and a rack](docs/screenshot.png)
+![Gear Bench: a belt on three pulleys, a planetary stage built from loose gears, a bevel pair, a worm and a rack](docs/screenshot.png)
 
 ## Download
 
@@ -18,28 +18,42 @@ Get the latest build from [Releases](https://github.com/m-iller/mechanical-game/
 
 The Windows builds are not code-signed, so SmartScreen shows a warning on first launch. Choose "More info", then "Run anyway".
 
-## Drives
+## Parts
 
-| Part | How it connects | Ratio |
-| --- | --- | --- |
-| Spur gear | Pitch circles touching on the same layer | z₁ / z₂, direction reverses |
-| Planetary stage | Sun couples to the shaft below, carrier to the shaft above, ring meshes on its outer teeth | Depends on the held member: ring, carrier or sun |
-| Bevel gear | Two bevels facing each other along one cross-shaft | (z₁ / z₂) × pinion ratios |
-| Worm gear | Motor on the worm, or a bevel cross-shaft lined up with the worm axis | starts / z, self-locking |
-| Belt and pulleys | "Link belt" between two pulleys on one layer, open or crossed | d₁ / d₂ |
-| Friction wheels | Two pulleys touching | d₁ / d₂, direction reverses |
-| Chain and sprockets | "Link chain" between two sprockets on one layer | z₁ / z₂ |
-| Rack | A spur gear touching the rack's pitch line | π·d of travel per gear turn |
+Every part is a separate piece. Nothing is a ready-made "drive"; a drive is what you get when parts touch.
 
-All toothed parts use module 2 mm and a 20° pressure angle. Chain is 8 mm pitch (ISO 05B).
+| Group | Parts |
+| --- | --- |
+| Gears | spur gear, ring gear with internal teeth, bevel gear, bevel pinion on a horizontal axis, worm, rack |
+| Belts, chains, friction | pulley, sprocket, friction wheel |
+| Shafts and couplings | vertical shaft through any span of layers, horizontal shaft, planet carrier, friction clutch, brake, differential, flywheel |
+| Mechanisms | crank and piston, cam and follower, Geneva drive, ratchet |
+
+How they connect:
+
+- **Mesh**: drag a gear until its pitch circle touches another. A gear inside a ring gear meshes on the inside. A gear beside a worm becomes its wheel. A bevel pinion snaps onto a bevel gear's rim.
+- **Shafts**: drop a part on the centre of a part on another layer and a shaft joins them. Select a shaft to stretch it across more layers. Parts can also run free on a shaft.
+- **Carrier**: drop gears on its pins and they orbit with it. A sun in the middle, planets on the pins and a ring around them make a planetary stage; hold any member, or drive two of them.
+- **Belts and chains**: select any number of pulleys or sprockets on one layer and join them. The loop follows the outer hull of the wheels.
+- **Clutch and differential**: each joins the shaft arriving from below to the shaft leaving above.
+- **Templates** insert whole assemblies built from the same parts: planetary stage, two-stage reducer, worm pair, bevel pair, belt and chain drives, rack and pinion, differential with a brake, clutch.
+
+All teeth use module 2 mm and a 20° pressure angle. Chain is 8 mm pitch (ISO 05B).
+
+## What it shows
+
+- Speed and direction of every part, for any number of motors.
+- For the selected part: pitch, tip, root and base diameters, pitch, face width, cone angles, worm lead angle, and the centre distance and ratio of each of its meshes.
+- Input and output speed, torque and power, total ratio and efficiency. Any part can be the output.
+- A "Dimensions" overlay with pitch diameters and centre distances on the drawing.
+- Why a train will not turn: overlapping parts, a loop that fights itself, teeth that cannot line up (the assembly condition of a planetary stage), a worm driven by its wheel, a ratchet turned the wrong way.
 
 ## Controls
 
-- **Drag** a part in the top view. It snaps into mesh, onto a shaft on another layer, or onto a bevel or worm axis.
-- **Layers** stack along the shaft. Parts sharing a centre on different layers turn together. Add up to eight.
-- **Side view** above the top view shares its x axis. Click there to select, drag to pan.
-- **Scroll or pinch** to zoom. Delete removes the selected part. Esc cancels a belt or chain link.
-- The train **locks** and turns red when parts overlap, a loop of meshes cannot turn, or something tries to back-drive a worm.
+- **Drag** a part in the top view; it snaps into mesh, onto a shaft axis or onto a carrier pin.
+- **Hold** on empty space, then drag, to select an area. Shift-click adds to the selection. Selected parts move, rotate, change layer, duplicate and delete together.
+- **Layers**: add, delete, reorder, hide. The side view above the top view shows how shafts run through them.
+- Space pauses. R rotates the selection. Delete removes it. Ctrl+D duplicates. Scroll or pinch to zoom.
 
 Your bench is saved automatically between sessions.
 
@@ -52,7 +66,21 @@ npm run bundle     # dist/gear-bench.html, one self-contained file
 npm run dist       # installers for the current OS, in release/
 ```
 
-The app is plain HTML, CSS and JavaScript in `src/` with no runtime dependencies. `main.js` is a small Electron shell around it.
+The app is plain HTML, CSS and JavaScript with no runtime dependencies. `main.js` is a small Electron shell around it.
+
+| File | What is in it |
+| --- | --- |
+| `src/js/strings.js` | interface text, English and Russian |
+| `src/js/model.js` | part catalogue, scene state, layers, save and load |
+| `src/js/paths.js` | part outlines, belt and chain routing |
+| `src/js/solver.js` | kinematics: speeds, tooth phases, locks |
+| `src/js/draw.js` | top and side views |
+| `src/js/templates.js` | ready-made assemblies and the opening example |
+| `src/js/ui.js` | panel, pointer and keyboard input |
+
+## How the solver works
+
+Each rigid group of parts is one unknown speed. Each contact is one linear equation between two or three speeds, for example `zA·ωA + zB·ωB − (zA + zB)·ωc = 0` for an external mesh riding on carrier `c`. Motors and holds pin speeds to numbers. The equations are eliminated one at a time, so the first one that contradicts the others names the parts that jam, and speeds that nothing determines are reported as free. Tooth phases are a second system of the same shape, solved modulo one pitch.
 
 ## Releasing
 
@@ -60,13 +88,14 @@ Bump `version` in `package.json` and push to `main`. The `Release` workflow buil
 
 ## What the model leaves out
 
-This is a kinematic model: rigid parts, exact ratios, no loads.
+This is a kinematic model: rigid parts, exact ratios, no dynamics.
 
-- No belt slip, chain polygon effect, backlash or efficiency losses.
-- Tooth profiles are true involutes, but without undercut or root fillets.
-- Bevel and worm teeth are drawn schematically.
+- No belt slip, chain polygon effect, backlash or inertia. Torque figures use typical stage efficiencies and assume all power leaves at the chosen output.
+- A differential with nothing deciding the split turns both shafts equally.
+- Tooth profiles are true involutes, without undercut or root fillets. Bevel and worm teeth are drawn schematically.
 - The rack is endless: its teeth scroll while the bar stays between its guides.
-- Worm gears always self-lock, whatever the lead angle.
+- Crank and piston, cam and follower, the Geneva drive and the differential are single units, not assembled from loose parts.
+- Two coaxial shafts cannot pass through the same layer, so there are no hollow shafts.
 
 ## Licence
 

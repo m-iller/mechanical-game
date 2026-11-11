@@ -1,8 +1,11 @@
 name: Release
 
-# Push a tag like v1.0.0 to build the Windows and Linux apps and attach them to a GitHub release.
+# Builds the Windows and Linux apps and publishes them as GitHub release v<version>,
+# where <version> comes from package.json. Runs on every push to main and does nothing
+# if that release already exists, so bumping the version is what ships a new release.
 on:
   push:
+    branches: [main]
     tags: ['v*']
   workflow_dispatch:
 
@@ -10,7 +13,29 @@ permissions:
   contents: write
 
 jobs:
+  version:
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.v.outputs.tag }}
+      release: ${{ steps.v.outputs.release }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: v
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="v$(node -p "require('./package.json').version")"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "release=false" >> "$GITHUB_OUTPUT"
+            echo "Release $tag already exists, nothing to do."
+          else
+            echo "release=true" >> "$GITHUB_OUTPUT"
+          fi
+
   build:
+    needs: version
+    if: needs.version.outputs.release == 'true'
     strategy:
       fail-fast: false
       matrix:
@@ -38,6 +63,8 @@ jobs:
             release/*.exe
 
   web:
+    needs: version
+    if: needs.version.outputs.release == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -52,8 +79,7 @@ jobs:
           path: dist/gear-bench.html
 
   release:
-    if: startsWith(github.ref, 'refs/tags/')
-    needs: [build, web]
+    needs: [version, build, web]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4
@@ -62,5 +88,8 @@ jobs:
           merge-multiple: true
       - uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ needs.version.outputs.tag }}
+          target_commitish: ${{ github.sha }}
+          name: Gear Bench ${{ needs.version.outputs.tag }}
           files: assets/*
           generate_release_notes: true

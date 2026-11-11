@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Gear Bench</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600&family=Barlow+Condensed:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="app">
+  <header>
+    <h1>Gear Bench</h1>
+    <p>Drag parts in the top view until they snap into mesh. Drop one on an occupied shaft on another layer to couple them. Link pulleys with belts and sprockets with chains.</p>
+  </header>
+  <main>
+    <div class="sheet" id="sheet">
+      <canvas id="cv" aria-label="Gear train drawing, side view above and top view below. Use the train list in the panel to select parts."></canvas>
+      <div class="status" id="status" aria-live="polite"><span><i></i><em id="status-text" style="font-style:normal"></em></span></div>
+      <div class="overlay left" role="group" aria-label="Views">
+        <div class="seg">
+          <button id="vm-both" aria-pressed="true">Both</button>
+          <button id="vm-top" aria-pressed="false">Top</button>
+          <button id="vm-side" aria-pressed="false">Side</button>
+        </div>
+      </div>
+      <div class="overlay right">
+        <button id="zoom-out" aria-label="Zoom out">−</button>
+        <button id="zoom-in" aria-label="Zoom in">+</button>
+        <button id="fit">Fit</button>
+      </div>
+    </div>
+    <div class="panel">
+      <section>
+        <h2>Motor <b id="motor-on">G1</b></h2>
+        <div class="row">
+          <label for="motor-rpm">Speed <output id="rpm-out" for="motor-rpm"></output></label>
+          <input type="range" id="motor-rpm" min="-240" max="240" step="1" value="60">
+        </div>
+        <div class="row">
+          <button class="primary" id="run">Pause</button>
+          <button id="reverse">Reverse</button>
+        </div>
+      </section>
+      <section>
+        <h2>New part <b id="new-layer"></b></h2>
+        <div class="types" id="types" role="group" aria-label="Part type"></div>
+        <div class="row">
+          <label for="new-z"><span id="new-z-lab">Teeth</span> <output id="new-z-out" for="new-z">24</output></label>
+          <input type="range" id="new-z" min="8" max="80" step="1" value="24">
+          <button id="add">Add</button>
+        </div>
+        <div class="row"><button id="add-layer">Add layer</button><span class="hint" id="layer-count"></span></div>
+      </section>
+      <section id="sel-box">
+        <h2>Selected <b id="sel-name">none</b></h2>
+        <p class="hint" id="sel-empty">Click a part to edit it.</p>
+        <div id="sel-body" hidden>
+          <div class="row">
+            <label for="sel-z"><span id="sel-z-lab">Teeth</span> <output id="sel-z-out" for="sel-z"></output></label>
+            <input type="range" id="sel-z" min="8" max="80" step="1">
+          </div>
+          <div class="row" id="row-z2">
+            <label for="sel-z2"><span id="sel-z2-lab">Planet teeth</span> <output id="sel-z2-out" for="sel-z2"></output></label>
+            <input type="range" id="sel-z2" min="8" max="40" step="1">
+          </div>
+          <div class="row" id="row-dir">
+            <label for="sel-dir"><span id="sel-dir-lab">Shaft direction</span> <output id="sel-dir-out" for="sel-dir"></output></label>
+            <input type="range" id="sel-dir" min="0" max="355" step="5">
+          </div>
+          <div class="row" id="row-held">
+            <span class="lab">Held member</span>
+            <div class="seg" role="group" aria-label="Held member">
+              <button id="held-r">Ring</button><button id="held-c">Carrier</button><button id="held-s">Sun</button>
+            </div>
+          </div>
+          <div class="row" id="row-link">
+            <span class="lab" id="link-lab">Belts</span>
+            <div class="links" id="links"></div>
+            <button id="link-add">Link belt</button>
+          </div>
+          <div class="row">
+            <span class="lab">Layer</span>
+            <div class="seg" id="layer-seg" role="group" aria-label="Layer"></div>
+          </div>
+          <dl id="specs"></dl>
+          <div class="row">
+            <button id="make-driver">Put motor here</button>
+            <button class="danger" id="remove">Remove</button>
+          </div>
+        </div>
+      </section>
+      <section>
+        <h2>Train <b>m = 2 mm · α = 20°</b></h2>
+        <div class="train" id="train"></div>
+        <div class="row"><button id="example">Load example</button></div>
+        <p class="hint">Touching pulleys form a friction drive. A worm only works one way: drive it from the motor or a bevel cross-shaft, never from its wheel. Planetary: the sun couples downward, the carrier upward. Chain is 8 mm pitch (05B).</p>
+      </section>
+    </div>
+  </main>
+</div>
+<script src="app.js"></script>
+</body>
+</html>

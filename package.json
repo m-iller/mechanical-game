@@ -1,0 +1,46 @@
+{
+  "name": "mechanical-game",
+  "version": "1.0.0",
+  "description": "Gear Bench: a sandbox for mechanical drives. Gears, belts, chains, worms and racks you can drag into mesh.",
+  "main": "main.js",
+  "homepage": "https://github.com/m-iller/mechanical-game",
+  "repository": { "type": "git", "url": "git+https://github.com/m-iller/mechanical-game.git" },
+  "author": { "name": "m-iller", "email": "m-iller@users.noreply.github.com" },
+  "license": "MIT",
+  "private": true,
+  "scripts": {
+    "start": "electron .",
+    "bundle": "node scripts/bundle.mjs",
+    "dist": "electron-builder --publish never",
+    "dist:linux": "electron-builder --linux --publish never",
+    "dist:win": "electron-builder --win --publish never"
+  },
+  "devDependencies": {
+    "electron": "^45.0.0",
+    "electron-builder": "^26.0.0"
+  },
+  "build": {
+    "appId": "io.github.m-iller.gearbench",
+    "productName": "Gear Bench",
+    "files": ["main.js", "src/**", "build/icon.png"],
+    "directories": { "output": "release" },
+    "linux": {
+      "target": ["AppImage", "deb"],
+      "category": "Education",
+      "icon": "build/icon.png",
+      "artifactName": "gear-bench-${version}-linux-${arch}.${ext}"
+    },
+    "win": {
+      "target": ["nsis", "portable"],
+      "icon": "build/icon.png"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "artifactName": "gear-bench-${version}-windows-setup.${ext}"
+    },
+    "portable": {
+      "artifactName": "gear-bench-${version}-windows-portable.${ext}"
+    }
+  }
+}

@@ -56,14 +56,7 @@ The app is plain HTML, CSS and JavaScript in `src/` with no runtime dependencies
 
 ## Releasing
 
-Bump `version` in `package.json`, then push a matching tag:
-
-```sh
-git tag v1.0.1
-git push origin v1.0.1
-```
-
-The `Release` workflow builds on Windows and Linux runners and attaches every file to a GitHub release.
+Bump `version` in `package.json` and push to `main`. The `Release` workflow builds on Windows and Linux runners, creates the tag `v<version>` and attaches every file to a GitHub release. Pushes that leave the version unchanged do nothing.
 
 ## What the model leaves out
 

@@ -197,7 +197,7 @@ function ui() {
   $('status').className = 'status' + (linkDraft ? '' : lockMsg ? ' locked' : !running ? ' paused' : '');
   $('status-text').textContent = linkDraft ? t('status.link') : !total ? t('status.empty') : lockMsg ? lockMsg : hintMsg ? hintMsg : !running ? t('status.paused') : t('status.running', { n: moving, m: total });
   const nt = TYPES[$('new-type').value], nz = $('new-z'); $('new-size-row').hidden = !nt.key;
-  if (nt.key) { nz.min = nt.lim[0]; nz.max = nt.lim[1]; nz.step = nt.lim[2]; $('new-z-out').textContent = nz.value; $('new-z-lab').textContent = t('size.' + $('new-type').value); }
+  if (nt.key) { nz.min = nt.lim[0]; nz.max = nt.lim[1]; nz.step = nt.lim[2]; const nn = $('new-z-num'); nn.min = nz.min; nn.max = nz.max; nn.step = nz.step; if (document.activeElement !== nn) nn.value = nz.value; $('new-z-lab').textContent = t('size.' + $('new-type').value); }
   $('new-layer').textContent = t('add.onLayer', { l: LET(activeLayer) });
   for (const m of ['both', 'top', 'side']) press($('vm-' + m), viewMode === m);
   press($('dims'), showDims);
@@ -399,7 +399,9 @@ cv.addEventListener('wheel', e => { e.preventDefault(); const p = pos(e); zoomAt
 $('run').onclick = () => { running = !running; ui(); };
 $('lang').onclick = () => { setLang(lang === 'ru' ? 'en' : 'ru'); applyLang(); solve(); ui(); };
 $('new-type').onchange = () => { const nt = TYPES[$('new-type').value]; if (nt.key) { $('new-z').min = nt.lim[0]; $('new-z').max = nt.lim[1]; $('new-z').value = nt.def; } ui(); };
-$('new-z').oninput = () => { $('new-z-out').textContent = $('new-z').value; };
+$('new-z').oninput = () => { $('new-z-num').value = $('new-z').value; };
+// typed sizes: any whole number inside the limits, applied on Enter or when the field loses focus
+$('new-z-num').onchange = () => { const nz = $('new-z'), v = Math.max(+nz.min, Math.min(+nz.max, Math.round(+$('new-z-num').value) || +nz.min)); nz.step = 1; nz.value = v; $('new-z-num').value = v; };
 $('add').onclick = () => {
   const type = $('new-type').value, nt = TYPES[type];
   const g = addPart(type, { ...(nt.key ? { [nt.key]: +$('new-z').value } : {}), x: 0, y: 0, layer: activeLayer, ...(type === 'shaft' ? { l0: activeLayer, l1: Math.min(layerCount - 1, activeLayer + 1) } : {}) });

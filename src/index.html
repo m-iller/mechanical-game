@@ -44,8 +44,9 @@
         <h2><span data-t="sec.add"></span> <b id="new-layer"></b></h2>
         <div class="row"><select id="new-type" data-t-label="sec.add"></select><button id="add" data-t="btn.add"></button></div>
         <div class="row" id="new-size-row">
-          <label for="new-z"><span id="new-z-lab"></span> <output id="new-z-out" for="new-z"></output></label>
-          <input type="range" id="new-z" min="8" max="80" step="1" value="24">
+          <label for="new-z-num"><span id="new-z-lab"></span></label>
+          <input type="range" id="new-z" min="8" max="80" step="1" value="24" data-t-label="sec.add">
+          <input type="number" class="num" id="new-z-num" min="8" max="80" step="1" value="24">
         </div>
         <div class="row"><select id="tpl" data-t-label="btn.insert"></select><button id="tpl-add" data-t="btn.insert"></button></div>
       </section>

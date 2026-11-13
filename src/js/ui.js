@@ -46,7 +46,7 @@ function specRows(p) {
       add('sp.me', mm(M)); add('sp.de', mm(d)); if (mate) { const dl = Math.atan(z / mate.z); add('sp.delta', `${(dl * 180 / Math.PI).toFixed(1)}°`); add('sp.Re', mm(d / 2 / Math.sin(dl))); add('sp.shaftAngle', '90°'); }
       break;
     }
-    case 'worm': { const q = 2 * WR / M, ga = Math.atan(p.zw / q); add('sp.z1', `${p.zw}`); add('sp.m', mm(M)); add('sp.q', `${q}`); add('sp.d1', mm(2 * WR)); add('sp.da', mm(2 * WO)); add('sp.gamma', `${(ga * 180 / Math.PI).toFixed(1)}°`); add('sp.px', mm(PM)); add('sp.lead', mm(PM * p.zw)); add('sp.b1', mm(WL)); add('sp.eta', `≈ ${Math.round(ETA.worm[p.zw] * 100)} %, ${t('sp.selfLock')}`); break; }
+    case 'worm': { const q = 2 * WR / M, ga = Math.atan(p.zw / q); add('sp.z1', `${p.zw}`); add('sp.m', mm(M)); add('sp.q', `${q}`); add('sp.d1', mm(2 * WR)); add('sp.da', mm(2 * WO)); add('sp.gamma', `${(ga * 180 / Math.PI).toFixed(1)}°`); add('sp.px', mm(PM)); add('sp.lead', mm(PM * p.zw)); add('sp.b1', mm(WL)); add('sp.eta', `≈ ${Math.round(wormEta(p.zw) * 100)} %${p.zw <= WORM_LOCK ? ', ' + t('sp.selfLock') : ''}`); break; }
     case 'rack': add('sp.m', mm(M)); add('sp.p', mm(PM)); add('sp.len', mm(rackLen(p))); add('sp.h', mm(2.25 * M)); break;
     case 'pulley': case 'fric': add('sp.dWork', mm(p.d)); add('sp.b', mm(FW)); break;
     case 'sprocket': add('sp.pc', `${CP} ${t('u.mm')} (05B)`); add('sp.d', mm(d)); add('sp.da', mm(d + 0.6 * CP)); add('sp.dRoller', mm(0.56 * CP)); break;
@@ -119,7 +119,7 @@ function renderMotors() {
       const card = el('div', null, { className: 'motor' }), head = rowOf(btn(p.name, () => pick([p.id])), btn(t('btn.reverse'), () => { p.motor.rpm = -p.motor.rpm; commit(); }), btn('×', () => { delete p.motor; commit(); }));
       head.lastChild.setAttribute('aria-label', t('btn.removeMotor'));
       const refs = []; const keep = selRefresh; selRefresh = refs;
-      card.append(head, slider(t('motor.speed'), -600, 600, 1, () => p.motor.rpm, v => { p.motor.rpm = v; commit(); }, t('u.rpm')), slider(t('motor.torque'), 0.1, 20, 0.1, () => p.motor.tq, v => { p.motor.tq = v; ui(); save(); }, t('u.Nm')));
+      card.append(head, slider(t('motor.speed'), -10000, 10000, 1, () => p.motor.rpm, v => { p.motor.rpm = v; commit(); }, t('u.rpm')), slider(t('motor.torque'), 0.01, 1000, 0.01, () => p.motor.tq, v => { p.motor.tq = v; ui(); save(); }, t('u.Nm')));
       selRefresh = keep; card.sync = () => refs.forEach(f => f());
       box.append(card);
     }

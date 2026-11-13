@@ -103,7 +103,7 @@ function solve() {
       const u = unit(a.dir), dx = b.x - a.x, dy = b.y - a.y, ax = dx * u[0] + dy * u[1], pe = -dx * u[1] + dy * u[0], z = meshZ(b);
       if (Math.abs(Math.abs(pe) - RO(b) - WR) > TOL * 4 || Math.abs(ax) > WL / 2 - 2) continue;
       const s = pe < 0 ? 1 : -1;                                             // the wheel turns the other way on the other side
-      eq([[b, z], [a, -s * a.zw]], ETA.worm[a.zw], [a.id, b.id], { worm: a, wheel: b });
+      eq([[b, z], [a, -s * a.zw]], wormEta(a.zw), [a.id, b.id], a.zw <= WORM_LOCK ? { worm: a, wheel: b } : {});
       peq([[b, z], [a, -s * a.zw]], s * 2 * ax / M - Math.PI + z * Math.atan2(-pe * u[0], pe * u[1]), [a.id, b.id]);
       meshes.push({ a, b, k: 'worm' });
     } else if (a.type === 'hbevel') {

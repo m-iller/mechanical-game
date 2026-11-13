@@ -11,34 +11,37 @@ const CB = 12;                          // cam base circle radius
 const GA = 14;                          // Geneva drive pin radius
 const HUB = 7;                          // carrier hub radius
 const RING_T = 4;                       // a ring gear's outer teeth: inner count + 2 * RING_T
-const TOL = 0.05, COAX = 0.5, LP = 18, FW = 10, BASE = 6, MAXL = 8;
+const TOL = 0.05, COAX = 0.5, LP = 18, FW = 10, BASE = 6, MAXL = 16;
 const RPM = Math.PI / 30;               // rad/s per rpm
 // typical stage efficiencies, used only for the torque and power figures
-const ETA = { gear: 0.98, inner: 0.985, fric: 0.90, bevel: 0.97, rack: 0.97, belt: 0.96, chain: 0.95, diff: 0.96, worm: [0, 0.70, 0.78, 0.84, 0.88] };
+const ETA = { gear: 0.98, inner: 0.985, fric: 0.90, bevel: 0.97, rack: 0.97, belt: 0.96, chain: 0.95, diff: 0.96 };
+// a worm's efficiency from its lead angle γ and a 5° friction angle: tan γ / tan(γ + ρ). Up to four starts it also self-locks.
+const wormEta = zw => { const g = Math.atan(zw * M / (2 * WR)); return Math.tan(g) / Math.tan(g + 5 * Math.PI / 180); };
+const WORM_LOCK = 4;
 
 /* grp: section in the "add" list. key/key2: the size the sliders edit. dir: has a direction in the plane.
    hz: turns about an axis lying in the layer. lin: slides instead of turning. tog: has an on/off state. */
 const TYPES = {
-  spur:     { pre: 'G',  grp: 'gears',  key: 'z',   lim: [8, 80, 1],    def: 24 },
-  ring:     { pre: 'RG', grp: 'gears',  key: 'z',   lim: [24, 120, 1],  def: 42 },
-  bevel:    { pre: 'BG', grp: 'gears',  key: 'z',   lim: [12, 60, 1],   def: 24 },
-  hbevel:   { pre: 'BH', grp: 'gears',  key: 'z',   lim: [8, 40, 1],    def: 12, dir: 1, hz: 1 },
-  worm:     { pre: 'W',  grp: 'gears',  key: 'zw',  lim: [1, 4, 1],     def: 1,  dir: 1, hz: 1 },
-  rack:     { pre: 'R',  grp: 'gears',  key: 'z',   lim: [8, 60, 1],    def: 24, dir: 1, lin: 1 },
-  pulley:   { pre: 'P',  grp: 'flex',   key: 'd',   lim: [16, 160, 2],  def: 40 },
-  sprocket: { pre: 'S',  grp: 'flex',   key: 'z',   lim: [9, 60, 1],    def: 18 },
-  fric:     { pre: 'FW', grp: 'flex',   key: 'd',   lim: [16, 160, 2],  def: 40 },
+  spur:     { pre: 'G',  grp: 'gears',  key: 'z',   lim: [6, 400, 1], def: 24 },
+  ring:     { pre: 'RG', grp: 'gears',  key: 'z',   lim: [12, 500, 1], def: 42 },
+  bevel:    { pre: 'BG', grp: 'gears',  key: 'z',   lim: [6, 300, 1], def: 24 },
+  hbevel:   { pre: 'BH', grp: 'gears',  key: 'z',   lim: [6, 200, 1], def: 12, dir: 1, hz: 1 },
+  worm:     { pre: 'W',  grp: 'gears',  key: 'zw',  lim: [1, 12, 1], def: 1,  dir: 1, hz: 1 },
+  rack:     { pre: 'R',  grp: 'gears',  key: 'z',   lim: [4, 400, 1], def: 24, dir: 1, lin: 1 },
+  pulley:   { pre: 'P',  grp: 'flex',   key: 'd',   lim: [8, 800, 2], def: 40 },
+  sprocket: { pre: 'S',  grp: 'flex',   key: 'z',   lim: [6, 300, 1], def: 18 },
+  fric:     { pre: 'FW', grp: 'flex',   key: 'd',   lim: [8, 800, 2], def: 40 },
   shaft:    { pre: 'V',  grp: 'shafts' },
-  hshaft:   { pre: 'H',  grp: 'shafts', key: 'len', lim: [20, 240, 2],  def: 80, dir: 1, hz: 1 },
-  carrier:  { pre: 'C',  grp: 'shafts', key: 'r',   lim: [12, 80, 1],   def: 27, key2: 'n', lim2: [1, 6] },
-  clutch:   { pre: 'CL', grp: 'shafts', key: 'd',   lim: [20, 80, 2],   def: 36, tog: 1 },
-  brake:    { pre: 'BR', grp: 'shafts', key: 'd',   lim: [20, 80, 2],   def: 40, tog: 1 },
-  diff:     { pre: 'D',  grp: 'shafts', key: 'z',   lim: [30, 80, 1],   def: 40 },
-  flywheel: { pre: 'F',  grp: 'shafts', key: 'd',   lim: [30, 160, 2],  def: 70 },
-  crank:    { pre: 'K',  grp: 'mech',   key: 'r',   lim: [6, 30, 1],    def: 14, key2: 'l', lim2: [20, 120], dir: 1 },
-  cam:      { pre: 'CM', grp: 'mech',   key: 'h',   lim: [2, 16, 1],    def: 8,  dir: 1 },
-  geneva:   { pre: 'GV', grp: 'mech',   key: 'z',   lim: [4, 8, 1],     def: 4,  dir: 1 },
-  ratchet:  { pre: 'RT', grp: 'mech',   key: 'z',   lim: [8, 30, 1],    def: 16, tog: 1 },
+  hshaft:   { pre: 'H',  grp: 'shafts', key: 'len', lim: [10, 1000, 2], def: 80, dir: 1, hz: 1 },
+  carrier:  { pre: 'C',  grp: 'shafts', key: 'r',   lim: [6, 400, 1], def: 27, key2: 'n', lim2: [1, 12] },
+  clutch:   { pre: 'CL', grp: 'shafts', key: 'd',   lim: [12, 400, 2], def: 36, tog: 1 },
+  brake:    { pre: 'BR', grp: 'shafts', key: 'd',   lim: [12, 400, 2], def: 40, tog: 1 },
+  diff:     { pre: 'D',  grp: 'shafts', key: 'z',   lim: [24, 300, 1], def: 40 },
+  flywheel: { pre: 'F',  grp: 'shafts', key: 'd',   lim: [16, 800, 2], def: 70 },
+  crank:    { pre: 'K',  grp: 'mech',   key: 'r',   lim: [3, 150, 1], def: 14, key2: 'l', lim2: [10, 600], dir: 1 },
+  cam:      { pre: 'CM', grp: 'mech',   key: 'h',   lim: [1, 40, 1], def: 8,  dir: 1 },
+  geneva:   { pre: 'GV', grp: 'mech',   key: 'z',   lim: [4, 24, 1], def: 4,  dir: 1 },
+  ratchet:  { pre: 'RT', grp: 'mech',   key: 'z',   lim: [6, 200, 1], def: 16, tog: 1 },
 };
 const GROUPS = ['gears', 'flex', 'shafts', 'mech'];
 const DEFAULTS = { carrier: { n: 3 }, crank: { l: 40 }, ring: { loose: true }, clutch: { on: true }, brake: { on: true }, ratchet: { on: false } };

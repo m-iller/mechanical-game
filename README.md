@@ -46,7 +46,7 @@ All teeth use module 2 mm and a 20° pressure angle. Chain is 8 mm pitch (ISO 05
 - For the selected part: pitch, tip, root and base diameters, pitch, face width, cone angles, worm lead angle, and the centre distance and ratio of each of its meshes.
 - Input and output speed, torque and power, total ratio and efficiency. Any part can be the output.
 - A "Dimensions" overlay with pitch diameters and centre distances on the drawing.
-- Why a train will not turn: overlapping parts, a loop that fights itself, teeth that cannot line up (the assembly condition of a planetary stage), a worm driven by its wheel, a ratchet turned the wrong way.
+- Why a train will not turn: overlapping parts, a loop that fights itself, teeth that cannot line up (the assembly condition of a planetary stage), a worm of up to four starts driven by its wheel, a ratchet turned the wrong way.
 
 ## Controls
 

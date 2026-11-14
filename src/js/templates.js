@@ -111,6 +111,13 @@ const TEMPLATES = {
     addPipe(dv1, 2, c1, 0, { d: 8, mat: 'hose' }); addPipe(dv1, 3, c1, 1, { d: 8, mat: 'hose' }); addPipe(dv2, 2, c2, 0, { d: 8, mat: 'hose' }); addPipe(dv2, 3, c2, 1, { d: 8, mat: 'hose', pts: [[x + 99, y - 40]] });
     out.push(foot, boom, stick, heel, c1, c2, pump, tk, tk2, tk3, tee, rv, dv1, dv2); return out;
   } },
+  // piston engine, flywheel and generator on one shaft; the generator feeds a heater through a wire
+  genset: { layers: 3, build(x, y, L) {
+    const e = addPart('engine', { x, y, layer: L, thr: 0.7 }), f = addPart('flywheel', { x, y, layer: L + 1, d: 110, J: 0.15 }), g = addPart('generator', { x, y, layer: L + 2, Pn: 30000, nn: 3000, ge: 0.9 });
+    const h = addPart('heater', { x: x + 90, y, layer: L + 2, d: 40, hm: 20, hk: 100 });
+    addPipe(g, 0, h, 0, { fluid: 'el', pts: [[x + 60, y], [x + 60, y - 30], [x + 113, y - 30]] });
+    return [e, addPart('shaft', { x, y, l0: L, l1: L + 2 }), f, g, h];
+  } },
   // four-bar: crank 20, coupler 70, rocker 50, frame 80 — a crank-rocker by Grashof's rule
   fourbar: { layers: 1, build(x, y, L) {
     const a = 20, b = 70, c = 50, d = 80, B = { x, y: y - a }, dx = x + d - B.x, dy = y - B.y, f = Math.hypot(dx, dy), k = (b * b - c * c + f * f) / (2 * f), h = Math.sqrt(b * b - k * k);

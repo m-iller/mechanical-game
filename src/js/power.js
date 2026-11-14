@@ -6,7 +6,8 @@
 'use strict';
 
 // a part loads the drive through a load law set by hand, or as the crank of a mechanism with the mean moment its cycle needs (p.mb)
-const hasLoad = p => !!p.load || p.mb > 0, lawOf = p => p.load ? loadOf(p.load) : () => p.mb;
+const hasLoad = p => !!p.load || p.mb > 0 || !!autoLoad(p), lawOf = p => p.load ? loadOf(p.load) : p.mb > 0 ? () => p.mb : autoLoad(p);
+const ownEta = p => p.load ? (p.load.eta == null ? 1 : p.load.eta) : p.type === 'generator' ? p.ge : p.type === 'hoist' ? HOIST_ETA : 1;
 const isDyn = m => !!m.kind && m.kind !== 'speed';
 const motorDir = m => Math.sign(isDyn(m) ? m.n : m.rpm) || 1;
 let power = { has: false, src: new Map(), load: new Map(), flow: new Map() }, warnings = [];
@@ -14,8 +15,9 @@ let power = { has: false, src: new Map(), load: new Map(), flow: new Map() }, wa
 /* Everything on the bench for the state it is in. The hydraulic network and the drive lean on each other: the pump's flow needs
    the shaft speed, the shaft's load needs the pump pressure. A few passes settle it; the last network solution is the next start. */
 function solve() {
-  tmmLoads(); hydSync();
+  tmmLoads(); hydSync(); ioSync();
   for (let pass = 0; pass < 5; pass++) { hydLoads(); solveDrive(); if (hydroStep() < 0.005) break; }
+  elStep();
   tmmStep(); tmmAnalyze();
   warnings = runChecks({ parts, power });
 }
@@ -45,7 +47,7 @@ function flows(ops) {
   const flow = new Map(), src = new Map(), load = new Map(), add = (v, P) => flow.set(v, (flow.get(v) || 0) + P);
   const loads = parts.filter(hasLoad);
   if (!lockMsg) for (const p of loads) {
-    const o = outOf(p), w = Math.abs(o.w) * RPM, M = w ? lawOf(p)(w) : 0, eta = !p.load || p.load.eta == null ? 1 : p.load.eta;
+    const o = outOf(p), w = Math.abs(o.w) * RPM, M = w ? lawOf(p)(w) : 0, eta = ownEta(p);
     let v = bodyOf(o), P = M * w; const fed = solved.hops.has(v), path = [];
     if (fed) { add(v, P); while (solved.prev.has(v)) { const { x, e } = solved.prev.get(v); P /= e.eta; path.push(e.eta); v = x; add(v, P); } }
     load.set(p.id, { w, M, P: M * w, Pout: M * w * eta, eta, fed, etaPath: path.reduce((a, b) => a * b, 1), Pmotor: fed ? P : 0, root: fed ? v : -1 });

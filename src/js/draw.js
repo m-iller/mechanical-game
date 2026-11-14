@@ -112,6 +112,7 @@ function drawTop(dpr, s, bh) {
   const part = g => {
     if (isLink(g)) { tmmDraw(g, s); return; }       // links of mechanisms are always scheme symbols
     if (isHyd(g)) { hydDraw(g, s); return; }        // and so are hydraulic parts
+    if (ioDraw(g, s)) return;
     if (schemeMode && schemePart(g, s)) return;   // kinematic-scheme symbol instead of the drawn shape
     const bad = collide.has(g.id), ink = bad ? C.jam : C.ink, lw = (bad ? 2 : 1.2) / s, fill = fillOf(g), sh = g.layer > 0, main = g.motor ? C.brass : fill, an = angle(g);
     // draw in the part's own frame: origin at its centre, x axis along its direction
@@ -365,6 +366,7 @@ function drawSide(dpr, s, bh) {
     if (isShaft(g)) continue;
     dim(g.layer);
     if (isHyd(g) && !isLink(g)) { rect(g.x, g.type === 'hvalve' ? 18 : g.type === 'hnode' ? 2.5 : 9, g.layer * LP + 1.5, g.layer * LP + FW - 1.5, fillOf(g), C.ink); if (sel.has(g.id)) { ctx.strokeStyle = C.select; ctx.lineWidth = 2 / s; ctx.strokeRect(g.x - 11, -(g.layer * LP + FW), 22, FW); } continue; }
+    if (IO_ROUND.includes(g.type)) { rect(g.x, g.d / 2, g.layer * LP, g.layer * LP + FW, g.motor ? C.brass : fillOf(g), C.ink); continue; }
     if (isLink(g)) { // a link is a thin plate over the span of its joints
       const xs = g.type === 'guide' ? [g.x - Math.abs(Math.cos(g.dir)) * g.len / 2, g.x + Math.abs(Math.cos(g.dir)) * g.len / 2] : jointsOf(g).map((_, k) => jointPos(g, k).x), lo = Math.min(...xs), hi = Math.max(...xs), hw = Math.max(SLIDES.includes(g.type) ? 8 : 2.5, (hi - lo) / 2);
       rect((lo + hi) / 2, hw, g.layer * LP + 3, g.layer * LP + FW - 3, g.type === 'pivot' || g.type === 'guide' ? C.muted : fillOf(g), C.ink);

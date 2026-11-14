@@ -115,6 +115,15 @@ if (!(await page.evaluate(() => pipes.some(q => Math.abs(q.ph) > 0.01)))) fail('
 if (process.env.SHOT_EXC) await page.screenshot({ path: process.env.SHOT_EXC });
 await page.evaluate(() => { viewMode = 'both'; });
 
+// engine, flywheel, generator, heater: runs, the heater warms up, the engine panel draws its diagrams
+await page.evaluate(() => { resetScene(3); const m = insertTemplate('genset', 0, 0); solve(); viewMode = 'top'; fit(); setActive(2); pick([m[0].id]); });
+await page.waitForTimeout(700);
+s = await state(); if (s.lock || s.warnings.length) fail('genset demo: ' + s.lock + JSON.stringify(s.warnings));
+const heat = await page.evaluate(() => parts.find(p => p.type === 'heater').T);
+if (!(heat > 20.5) || await page.locator('canvas.graphs').count() !== 1) fail('genset demo: heater at ' + heat);
+if (process.env.SHOT_GEN) { await page.evaluate(() => { setActive(0); pick([parts[0].id]); setActive(2); }); await page.waitForTimeout(100); await page.screenshot({ path: process.env.SHOT_GEN }); }
+await page.evaluate(() => { viewMode = 'both'; });
+
 // power balance: the conveyor demo runs, shows explained figures, and the "where from" box opens
 await page.evaluate(() => { resetScene(5); const m = insertTemplate('conveyor', 0, 0); solve(); fit(); pick([m[m.length - 1].id]); });
 await page.waitForTimeout(60);

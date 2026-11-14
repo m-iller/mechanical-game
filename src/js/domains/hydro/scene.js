@@ -18,8 +18,8 @@ const PORTS = {
   hvalve: [['P', -4, 9], ['T', 4, 9], ['A', -4, -9], ['B', 4, -9]], hthrottle: [['A', -9, 0], ['B', 9, 0]], hcheck: [['A', -9, 0], ['B', 9, 0]], hnode: [['', 0, 0]],
 };
 // ports of a part in its own frame: [name, x, y]
-const portsOf = p => p.type === 'hcyl' ? [['A', 5, 5.5], ['B', CYL_L0(p) - 8, 5.5]] : PORTS[p.type] || [];
-function portPos(p, k) { const q = portsOf(p)[k], th = p.type === 'hcyl' ? linkTh(p) : p.dir || 0, c = Math.cos(th), s = Math.sin(th); return { x: p.x + c * q[1] - s * q[2], y: p.y + s * q[1] + c * q[2] }; }
+const portsOf = p => ty(p, 'generator', 'heater') ? [['E', p.d / 2 + 3, 0]] : p.type === 'hcyl' ? [['A', 5, 5.5], ['B', CYL_L0(p) - 8, 5.5]] : PORTS[p.type] || [];
+function portPos(p, k) { const q = portsOf(p)[k], th = p.type === 'hcyl' ? linkTh(p) : isHyd(p) || T(p).grp === 'heat' ? p.dir || 0 : 0, c = Math.cos(th), s = Math.sin(th); return { x: p.x + c * q[1] - s * q[2], y: p.y + s * q[1] + c * q[2] }; }
 // the polyline of a pipe on the bench, and its length in metres (a change of layer adds the distance between layers)
 const pipePath = q => { const a = byId(q.a), b = byId(q.b); return a && b ? [portPos(a, q.pa), ...q.pts.map(v => ({ x: v[0], y: v[1] })), portPos(b, q.pb)] : []; };
 function pipeLen(q) { const P = pipePath(q), a = byId(q.a), b = byId(q.b); let L = Math.abs(a.layer - b.layer) * LP; for (let i = 1; i < P.length; i++) L += Math.hypot(P[i].x - P[i - 1].x, P[i].y - P[i - 1].y); return L / 1000; }
@@ -28,14 +28,15 @@ const portKey = (id, k) => id + ':' + k;
 
 let hyd = { ok: true, has: false, p: new Map(), pipe: new Map(), part: new Map(), pmax: 1e5, x: null, sig: '' };
 function hydroNet() {
-  const hp = parts.filter(p => isHyd(p)), nodeOf = new Map(), used = new Set(pipes.flatMap(q => [portKey(q.a, q.pa), portKey(q.b, q.pb)]));
+  const oil = pipes.filter(q => isHyd(byId(q.a)) && isHyd(byId(q.b)) && !isWire(q));   // wires and gas lines are not this network's business
+  const hp = parts.filter(p => isHyd(p)), nodeOf = new Map(), used = new Set(oil.flatMap(q => [portKey(q.a, q.pa), portKey(q.b, q.pb)]));
   let n = 1; const fixed = { 0: 0 };                                         // node 0 is the tank
   const node = (p, k) => { const key = portKey(p.id, k); if (p.type === 'htank') return 0; if (!nodeOf.has(key)) nodeOf.set(key, n++); return nodeOf.get(key); };
   // a suction or tank port left open is taken to stand in the tank
   const toTank = (p, k) => used.has(portKey(p.id, k)) ? node(p, k) : 0;
   const elems = [], owner = [];
   const add = (e, own) => { elems.push(e); owner.push(own); };
-  for (const q of pipes) { const a = byId(q.a), b = byId(q.b); add({ k: 'pipe', a: node(a, q.pa), b: node(b, q.pb), d: q.d / 1000, L: Math.max(1e-3, pipeLen(q)), eps: ROUGH[q.mat] || ROUGH.steel, zeta: q.pts.length * ZETA.elbow, fluid: q.fluid }, { pipe: q }); }
+  for (const q of oil) { const a = byId(q.a), b = byId(q.b); add({ k: 'pipe', a: node(a, q.pa), b: node(b, q.pb), d: q.d / 1000, L: Math.max(1e-3, pipeLen(q)), eps: ROUGH[q.mat] || ROUGH.steel, zeta: q.pts.length * ZETA.elbow, fluid: q.fluid }, { pipe: q }); }
   for (const p of hp) {
     const live = portsOf(p).some((_, k) => used.has(portKey(p.id, k))); if (!live) continue;
     if (p.type === 'hpump') add({ k: 'pump', a: toTank(p, 0), b: node(p, 1), Q: p.q * 1e-6 * Math.abs(p.w) / 60 * ETA_V }, { part: p });
@@ -102,7 +103,7 @@ const hydSync = () => { for (const p of parts) if (p.type === 'hcyl') { p.s = Ma
 
 /* ---------- picking ---------- */
 // the port nearest to a point, within r: { p, k }
-function portAt(w, r) { let best = null; for (const p of parts) if (isHyd(p) && shown(p)) portsOf(p).forEach((_, k) => { const q = portPos(p, k), d = Math.hypot(q.x - w.x, q.y - w.y); if (d < r && (!best || d < best.d)) best = { p, k, d }; }); return best; }
+function portAt(w, r) { let best = null; for (const p of parts) if (shown(p)) portsOf(p).forEach((_, k) => { const q = portPos(p, k), d = Math.hypot(q.x - w.x, q.y - w.y); if (d < r && (!best || d < best.d)) best = { p, k, d }; }); return best; }
 function pipeAt(w, r) {
   for (const q of pipes) { const P = pipePath(q); for (let i = 1; i < P.length; i++) { const ax = P[i - 1].x, ay = P[i - 1].y, dx = P[i].x - ax, dy = P[i].y - ay, L2 = dx * dx + dy * dy || 1, tt = Math.max(0, Math.min(1, ((w.x - ax) * dx + (w.y - ay) * dy) / L2)); if (Math.hypot(w.x - ax - dx * tt, w.y - ay - dy * tt) < r) return { q, i, x: ax + dx * tt, y: ay + dy * tt }; } }
   return null;
@@ -119,6 +120,7 @@ addCheck('hydraulics', () => {
   if (!hyd.ok) out.push({ level: 'error', code: 'w.hydDead', text: t('w.hydDead'), ids: parts.filter(p => p.type === 'hpump').map(p => p.id) });
   for (const q of pipes) {
     const r = hyd.pipe.get(q.id), a = byId(q.a), b = byId(q.b), name = `${a.name}–${b.name}`, fl = FLUIDS[q.fluid] || FLUIDS.oil;
+    if (isWire(q)) continue;
     if (fl.phase !== 'liquid' && [a, b].some(p => isHyd(p) && p.type !== 'hnode')) out.push({ level: 'error', code: 'w.pipeGas', text: t('w.pipeGas', { a: name }), ids: [a.id, b.id] });
     if (r && hyd.ok && r.fast) out.push({ level: 'warn', code: 'w.pipeFast', text: t('w.pipeFast', { a: name, v: fmtNum(Math.abs(r.v), 3), m: fl.vmax[q.kind] || fl.vmax.pressure }), ids: [a.id, b.id] });
   }

@@ -26,6 +26,10 @@ Gear Bench is growing from a drive sandbox into a rough-figures tool for mechani
 - **Hydraulic drive**: tank, pump, hydraulic motor, cylinder, 4/3 directional valve switched by a click, throttle, check and relief valves, tee. Pipes are laid by clicks from port to port with corners; ending on another pipe makes a tee. The network is solved in steady state: flows, pressures, losses for laminar and turbulent flow, Reynolds number, recommended speeds.
 - **Flow on the bench**: pipe colour shows pressure with a legend, marks run along the line at the speed of the flow, an arrow shows its direction; a line with no flow stands still, and a relief valve dumping to the tank shows on the return line.
 - **Hydraulics meets mechanics**: the pump takes its speed from a shaft and loads the motor; a cylinder is a link of changing length in a mechanism and stops at its end or when the linkage can go no further. Templates "Pump, valve, cylinder" and "Excavator boom".
+- **Piston engine**: a source built from its cycle (Otto or Diesel): displacement, mean indicated pressure, torque, indicator diagram, torque over 720° for the chosen number of cylinders, flywheel figures.
+- **Generator and heater**: the generator loads the shaft and sends its power down a wire to a heater, whose temperature rises as a thermal mass; a lamp on the generator glows with the load. A heater can also be a friction brake on a shaft.
+- **More sources and consumers**: hand crank, weight on a rope, spring motor, hoist with a load. Template "Engine, flywheel, generator, heater".
+- Heat-engine cores: Brayton and Rankine cycles with fits to the steam tables, one axial turbine stage with speed triangles.
 
 ### Changed
 - Scenes are saved in format v3. Scenes from 2.x open and are migrated on load.

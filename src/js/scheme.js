@@ -190,17 +190,17 @@ function hydCylDraw(g, s, col) {
 function pipesDraw(layer, s) {
   for (const q of pipes) {
     const a = byId(q.a); if (!a || a.layer !== layer) continue;
-    const P = pipePath(q), r = hyd.pipe.get(q.id), lw = (2 + Math.min(3, q.d / 8)) / s, flow = r && hyd.ok && Math.abs(r.Q) > 1e-8;
+    const P = pipePath(q), r = hyd.pipe.get(q.id), wire = isWire(q), lw = wire ? 1.8 / s : (2 + Math.min(3, q.d / 8)) / s, flow = r && (hyd.ok || r.el || r.gas) && Math.abs(r.Q) > 1e-8, hue = wire ? C.brass : r && (hyd.ok || r.gas) ? pColor((r.pa + r.pb) / 2) : C.muted;
     const path = () => { ctx.beginPath(); P.forEach((v, i) => i ? ctx.lineTo(v.x, v.y) : ctx.moveTo(v.x, v.y)); };
     ctx.save(); ctx.lineJoin = 'round'; ctx.lineCap = 'butt';
     if (selPipe === q.id) { ctx.strokeStyle = C.select; ctx.lineWidth = lw + 4 / s; path(); ctx.stroke(); }
-    ctx.strokeStyle = r && hyd.ok ? pColor((r.pa + r.pb) / 2) : C.muted; ctx.lineWidth = lw; ctx.globalAlpha *= flow ? 1 : 0.6;
+    ctx.strokeStyle = hue; ctx.lineWidth = lw; ctx.globalAlpha *= flow ? 1 : 0.6;
     ctx.setLineDash(q.kind === 'pilot' ? [8 / s, 4 / s] : q.kind === 'drain' ? [3 / s, 3 / s] : []); path(); ctx.stroke(); ctx.setLineDash([]);
     if (flow) { // running marks and an arrowhead in the direction of the flow
       ctx.strokeStyle = C.paper; ctx.lineWidth = lw * 0.5; ctx.setLineDash([3 / s, 9 / s]); ctx.lineDashOffset = -(q.ph || 0) * 60 / s; path(); ctx.stroke(); ctx.setLineDash([]);
       let best = 1, bl = 0; for (let i = 1; i < P.length; i++) { const L = Math.hypot(P[i].x - P[i - 1].x, P[i].y - P[i - 1].y); if (L > bl) { bl = L; best = i; } }
       const A = P[best - 1], B = P[best], sg = r.Q > 0 ? 1 : -1, an = Math.atan2((B.y - A.y) * sg, (B.x - A.x) * sg), mx = (A.x + B.x) / 2, my = (A.y + B.y) / 2, h = 7 / s;
-      ctx.fillStyle = ctx.strokeStyle = pColor((r.pa + r.pb) / 2); ctx.beginPath(); ctx.moveTo(mx + h * Math.cos(an), my + h * Math.sin(an)); ctx.lineTo(mx + h * 0.8 * Math.cos(an + 2.5), my + h * 0.8 * Math.sin(an + 2.5)); ctx.lineTo(mx + h * 0.8 * Math.cos(an - 2.5), my + h * 0.8 * Math.sin(an - 2.5)); ctx.closePath(); ctx.fill();
+      ctx.fillStyle = ctx.strokeStyle = hue; ctx.beginPath(); ctx.moveTo(mx + h * Math.cos(an), my + h * Math.sin(an)); ctx.lineTo(mx + h * 0.8 * Math.cos(an + 2.5), my + h * 0.8 * Math.sin(an + 2.5)); ctx.lineTo(mx + h * 0.8 * Math.cos(an - 2.5), my + h * 0.8 * Math.sin(an - 2.5)); ctx.closePath(); ctx.fill();
     }
     ctx.restore();
   }
@@ -219,8 +219,49 @@ function pipesSide(s) {
 }
 // pressure scale, in screen space
 function hydLegend(x, y) {
-  if (!hyd.has || !pipes.length) return;
+  if (!(hyd.has || hyd.gas) || !pipes.length) return;
   const w = 120, g = ctx.createLinearGradient(x, 0, x + w, 0); for (let i = 0; i <= 6; i++) g.addColorStop(i / 6, pColor(hyd.pmax * i / 6));
   ctx.fillStyle = g; ctx.fillRect(x, y, w, 7); ctx.strokeStyle = C.ink; ctx.lineWidth = 1; ctx.strokeRect(x, y, w, 7);
   ctx.font = `11px ${C.mono}`; ctx.textBaseline = 'top'; ctx.fillStyle = C.ink; ctx.textAlign = 'left'; ctx.fillText('0', x, y + 10); ctx.textAlign = 'right'; ctx.fillText(fmtU(hyd.pmax, 'bar'), x + w, y + 10);
+}
+
+/* ---------- sources and consumers ---------- */
+// engine, hand crank, weight, spring, generator, heater, hoist: the same symbol in both looks of the top view
+function ioDraw(g, s) {
+  if (!IO_ROUND.includes(g.type)) return false;
+  const col = collide.has(g.id) ? C.jam : g.motor ? C.brass : C.ink, w = 2 / s, thin = 1 / s, R = g.d / 2, an = angle(g);
+  ctx.save(); ctx.translate(g.x, g.y); ctx.strokeStyle = col; ctx.fillStyle = col; ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.lineWidth = w;
+  const seg = (x0, y0, x1, y1, lw = w) => { ctx.lineWidth = lw; ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x1, y1); ctx.stroke(); };
+  const disc = (r, fill = C.paper) => { ctx.beginPath(); ctx.arc(0, 0, r, 0, TAU); ctx.fillStyle = fill; ctx.fill(); ctx.lineWidth = w; ctx.stroke(); ctx.fillStyle = col; };
+  const letter = (ch, k = 0.8) => { ctx.font = `600 ${R * k}px ${C.mono}`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(ch, 0, R * 0.04); };
+  const spoke = (r0, r1) => seg(r0 * Math.cos(an), r0 * Math.sin(an), r1 * Math.cos(an), r1 * Math.sin(an), thin);
+  const drum = down => { // drum with a rope and a mass on it; the mass rides up and down a little as the drum turns
+    disc(R); spoke(0, R); const y = R + 14 + 6 * Math.sin(an * 0.2); seg(R, 0, R, y, thin * 1.4); ctx.fillStyle = C.paper; ctx.fillRect(R - 5, y, 10, 8); ctx.lineWidth = w; ctx.strokeRect(R - 5, y, 10, 8); ctx.fillStyle = col;
+    const ay = y + 12; seg(R, ay, R, ay + 6, thin); seg(R, down ? ay + 6 : ay, R - 1.6, down ? ay + 3.5 : ay + 2.5, thin); seg(R, down ? ay + 6 : ay, R + 1.6, down ? ay + 3.5 : ay + 2.5, thin);
+  };
+  switch (g.type) {
+    case 'engine': { // a circle with a cylinder and piston in it
+      disc(R); const pw = R * 0.5, y = -R * 0.15 + R * 0.22 * Math.cos(an); ctx.lineWidth = thin * 1.4; ctx.strokeRect(-pw / 2, -R * 0.62, pw, R * 0.9);
+      ctx.fillRect(-pw / 2, y - R * 0.1, pw, R * 0.2); seg(0, y, R * 0.22 * Math.sin(an), R * 0.5, thin * 1.4); ctx.beginPath(); ctx.arc(0, R * 0.5, R * 0.22, 0, TAU); ctx.lineWidth = thin; ctx.stroke(); break;
+    }
+    case 'generator': { // G in a circle, with a lamp that glows with the power going out
+      disc(R); letter('G'); spoke(R * 0.72, R); const r = elec.gen.get(g.id), k = r ? Math.min(1, r.ratio) : 0, lx = R * 0.95, ly = -R * 0.95;
+      ctx.beginPath(); ctx.arc(lx, ly, 4, 0, TAU); ctx.fillStyle = C.paper; ctx.fill(); ctx.globalAlpha *= k; ctx.fillStyle = C.brass; ctx.fill(); ctx.globalAlpha /= k || 1; ctx.lineWidth = thin * 1.3; ctx.stroke();
+      if (k > 0.05) for (let i = 0; i < 8; i++) { const a = TAU * i / 8; seg(lx + 5.5 * Math.cos(a), ly + 5.5 * Math.sin(a), lx + (6.5 + 3 * k) * Math.cos(a), ly + (6.5 + 3 * k) * Math.sin(a), thin); }
+      ctx.fillStyle = col; break;
+    }
+    case 'heater': { // a resistor in a box; the box reddens as it heats
+      const k = Math.max(0, Math.min(1, ((g.T == null ? T_AMB : g.T) - T_AMB) / 380)); ctx.fillStyle = C.paper; ctx.fillRect(-R, -R, 2 * R, 2 * R);
+      ctx.globalAlpha *= 0.75 * k; ctx.fillStyle = C.jam; ctx.fillRect(-R, -R, 2 * R, 2 * R); ctx.globalAlpha /= 0.75 * k || 1; ctx.lineWidth = w; ctx.strokeRect(-R, -R, 2 * R, 2 * R);
+      ctx.lineWidth = thin * 1.5; ctx.beginPath(); ctx.moveTo(-R * 0.75, 0); for (let i = 0; i <= 6; i++) ctx.lineTo(-R * 0.6 + R * 0.2 * i, i % 2 ? R * 0.3 : -R * 0.3); ctx.lineTo(R * 0.75, 0); ctx.stroke(); ctx.fillStyle = col;
+      if (g.load) { ctx.beginPath(); ctx.arc(0, 0, 2.2, 0, TAU); ctx.fill(); spoke(0, R * 0.9); } break;
+    }
+    case 'hoist': drum(false); break;
+    case 'weight': drum(true); break;
+    case 'hand': disc(Math.max(3, R * 0.3)); seg(0, 0, R * Math.cos(an), R * Math.sin(an)); ctx.beginPath(); ctx.arc(R * Math.cos(an), R * Math.sin(an), 2.4, 0, TAU); ctx.fill(); break;
+    case 'spring': { disc(R); ctx.lineWidth = thin * 1.5; ctx.beginPath(); for (let i = 0; i <= 60; i++) { const a = an + i * 0.28, r = R * 0.12 + R * 0.72 * i / 60; i ? ctx.lineTo(r * Math.cos(a), r * Math.sin(a)) : ctx.moveTo(r * Math.cos(a), r * Math.sin(a)); } ctx.stroke(); break; }
+  }
+  ctx.restore();
+  if (portsOf(g).length) hydPorts(g, s);
+  return true;
 }

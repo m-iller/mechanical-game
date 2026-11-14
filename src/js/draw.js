@@ -1,7 +1,10 @@
 /* Gear Bench — drawing: the top view, the side view above it, labels and dimensions. */
 'use strict';
 
-const cv = document.getElementById('cv'), ctx = cv.getContext('2d'), sheet = document.getElementById('sheet');
+const cv = document.getElementById('cv'), mainCtx = cv.getContext('2d'), sheet = document.getElementById('sheet');
+let ctx = mainCtx;                     // the drawing functions below paint into whichever context this names
+const ghost = document.createElement('canvas'), ghostCtx = ghost.getContext('2d');
+const FADE = 0.3;                       // opacity of the layers that are not active
 let W = 300, H = 300, C = {}, boxSel = null;
 
 function readTokens() {
@@ -78,6 +81,7 @@ function cone(p, s, P, face, endVis, zax, fill, ink) {
 }
 function drawLinkTop(L) {
   const R = L.route; if (!R) return;
+  if (schemeMode) return schemeLink(L, view.scale);
   ctx.save(); ctx.lineJoin = 'round';
   if (L.kind === 'belt') {
     const pp = R.L / Math.max(1, Math.round(R.L / 9));
@@ -106,6 +110,11 @@ function drawTop(dpr, s, bh) {
   const detail = (x, y, ang, path, ink) => { ctx.save(); ctx.translate(x, y); ctx.rotate(ang); ctx.strokeStyle = ink; ctx.lineWidth = 0.8 / s; ctx.globalAlpha = 0.6; ctx.stroke(path); ctx.restore(); };
   const dot = (x, y, r, f) => { ctx.fillStyle = f; ctx.beginPath(); ctx.arc(x, y, r, 0, TAU); ctx.fill(); };
   const part = g => {
+    if (isLink(g)) { tmmDraw(g, s); return; }       // links of mechanisms are always scheme symbols
+    if (isHyd(g)) { hydDraw(g, s); return; }        // and so are hydraulic parts
+    if (T(g).grp === 'heat') { thDraw(g, s); return; }
+    if (ioDraw(g, s)) return;
+    if (schemeMode && schemePart(g, s)) return;   // kinematic-scheme symbol instead of the drawn shape
     const bad = collide.has(g.id), ink = bad ? C.jam : C.ink, lw = (bad ? 2 : 1.2) / s, fill = fillOf(g), sh = g.layer > 0, main = g.motor ? C.brass : fill, an = angle(g);
     // draw in the part's own frame: origin at its centre, x axis along its direction
     const local = fn => { ctx.save(); ctx.translate(g.x, g.y); ctx.rotate(g.dir || 0); ctx.lineJoin = 'round'; fn(); ctx.restore(); };
@@ -158,6 +167,19 @@ function drawTop(dpr, s, bh) {
       case 'fric': { const fp = discPath(g.d / 2, 4, 0); gearAt(g.x, g.y, an, fp.fill, main, ink, lw, sh); ctx.strokeStyle = ink; ctx.lineWidth = 2.2; ctx.globalAlpha = 0.45; ctx.beginPath(); ctx.arc(g.x, g.y, g.d / 2 - 1.1, 0, TAU); ctx.stroke(); ctx.globalAlpha = 1; break; }
       case 'sprocket': gearAt(g.x, g.y, an, sprocketPath(g.z), main, ink, lw, sh); break;
       case 'flywheel': gearAt(g.x, g.y, an, flywheelPath(g.d), main, ink, lw, sh); break;
+      case 'emotor': { // stator with the motor letter, rotor turning inside
+        const r = g.d / 2;
+        ctx.save(); shadow(sh); ctx.fillStyle = C.brass; ctx.beginPath(); ctx.arc(g.x, g.y, r, 0, TAU); ctx.fill(); shadow(false); ctx.strokeStyle = ink; ctx.lineWidth = lw; ctx.stroke(); ctx.restore();
+        gearAt(g.x, g.y, an, discPath(Math.round(r * 0.55)).fill, fill, ink, lw, false);
+        ctx.fillStyle = ink; ctx.font = `600 ${r * 0.36}px ${C.mono}`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('M', g.x, g.y - r * 0.77);
+        break;
+      }
+      case 'machine': { // a plain box: whatever machine takes the power
+        const r = g.d / 2;
+        ctx.save(); shadow(sh); ctx.fillStyle = fill; ctx.fillRect(g.x - r, g.y - r, 2 * r, 2 * r); shadow(false); ctx.strokeStyle = ink; ctx.lineWidth = lw; ctx.strokeRect(g.x - r, g.y - r, 2 * r, 2 * r); ctx.restore();
+        gearAt(g.x, g.y, an, discPath(Math.round(r * 0.4)).fill, fill, ink, lw, false);
+        break;
+      }
       case 'carrier': { // hub, arms and pins; gears dropped on a pin ride with it
         ctx.save(); ctx.lineCap = 'round'; shadow(sh);
         for (const pass of [[9, ink], [9 - 2 * lw, main]]) { ctx.strokeStyle = pass[1]; ctx.lineWidth = pass[0]; ctx.beginPath(); for (let k = 0; k < g.n; k++) { const q = pinPos(g, k); ctx.moveTo(g.x, g.y); ctx.lineTo(q.x, q.y); } ctx.stroke(); shadow(false); }
@@ -232,20 +254,33 @@ function drawTop(dpr, s, bh) {
       ctx.beginPath(); ctx.arc(g.x, g.y, RO(g), 0, TAU); if (g.type === 'ring') { ctx.moveTo(g.x + RI(g), g.y); ctx.arc(g.x, g.y, RI(g), 0, TAU); } ctx.stroke(); ctx.setLineDash([]); ctx.globalAlpha = 1;
     }
   };
-  for (let l = 0; l < layerCount; l++) {
-    if (!layerShown(l)) continue;
+  const layerParts = l => {
     for (const g of parts) if (g.layer === l && !isShaft(g)) part(g);
     for (const L of links) { const w = byId(L.ids[0]); if (w && w.layer === l) drawLinkTop(L); }
-  }
+    pipesDraw(l, s);
+    for (const g of parts) if (g.layer === l && g.type === 'hcyl') hydPorts(g, s);
+  };
+  // layers other than the active one are painted on a second canvas and laid over as one faded sheet
+  const faded = ls => {
+    ls = ls.filter(layerShown); if (!ls.length) return;
+    if (ghost.width !== cv.width || ghost.height !== cv.height) { ghost.width = cv.width; ghost.height = cv.height; }
+    const tf = mainCtx.getTransform(); ghostCtx.setTransform(1, 0, 0, 1, 0, 0); ghostCtx.clearRect(0, 0, ghost.width, ghost.height); ghostCtx.setTransform(tf);
+    ctx = ghostCtx; try { ls.forEach(layerParts); } finally { ctx = mainCtx; }
+    ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.globalAlpha = FADE; ctx.drawImage(ghost, 0, 0); ctx.restore();
+  };
+  const all = [...Array(layerCount).keys()];
+  faded(all.filter(l => l < activeLayer)); if (layerShown(activeLayer)) layerParts(activeLayer); faded(all.filter(l => l > activeLayer));
   // shafts and carrier pins poke through everything above them
   for (const g of parts) {
     if (!shown(g)) continue;
+    ctx.globalAlpha = onActive(g) ? 1 : FADE;
     if (g.type === 'carrier') for (let k = 0; k < g.n; k++) { const q = pinPos(g, k); dot(q.x, q.y, 2.6, C.shaft); dot(q.x, q.y, 1.1, C.paper); }
     if (isShaft(g)) {
       const an = angle(g); dot(g.x, g.y, 3, g.motor ? C.brass : collide.has(g.id) ? C.jam : C.shaft);
       ctx.strokeStyle = C.paper; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(g.x, g.y); ctx.lineTo(g.x + 3 * Math.cos(an), g.y + 3 * Math.sin(an)); ctx.stroke();
     }
   }
+  ctx.globalAlpha = 1;
   if (showDims) { // centre distances of every mesh
     ctx.save(); ctx.strokeStyle = C.select; ctx.fillStyle = C.select; ctx.lineWidth = 1 / s;
     for (const m of meshes) if (shown(m.a) && shown(m.b) && isVert(m.a)) { ctx.beginPath(); ctx.moveTo(m.a.x, m.a.y); ctx.lineTo(m.b.x, m.b.y); ctx.stroke(); dot(m.a.x, m.a.y, 1.2, C.select); dot(m.b.x, m.b.y, 1.2, C.select); }
@@ -254,6 +289,7 @@ function drawTop(dpr, s, bh) {
   for (const g of selParts()) {
     ctx.strokeStyle = C.select; ctx.lineWidth = 2 / s;
     const b = boxOf(g);
+    if (isLink(g)) { tmmOutline(g); tmmDrawPath(g, s); continue; }
     if (b) { ctx.save(); ctx.translate(g.x, g.y); ctx.rotate(g.dir); const y0 = g.type === 'rack' ? -1.25 * M - RB - 2 : -b[1] - 2, hh = g.type === 'rack' ? RB + 2.25 * M + 4 : 2 * b[1] + 4, x0 = g.type === 'hbevel' ? -9 : -b[0] - 2, ww = g.type === 'hbevel' ? 24 : 2 * b[0] + 4; ctx.strokeRect(x0, y0, ww, hh); ctx.restore(); }
     else { ctx.beginPath(); ctx.arc(g.x, g.y, tipR(g) + 1.6, 0, TAU); ctx.stroke(); }
   }
@@ -266,10 +302,13 @@ function drawTop(dpr, s, bh) {
     if (!shown(g) || (isShaft(g) && !sel.has(g.id) && !g.motor) || g.mount) continue;
     const b = boxOf(g), off = (b ? b[1] : tipR(g)) * s + 13, n = b ? [-Math.sin(g.dir), Math.cos(g.dir)] : [0, 1];
     const up = b ? -1 : g.layer ? -1 : 1, sx = X(g.x) + n[0] * up * off, sy = Y(g.y) + n[1] * up * off + (b || !g.layer ? 0 : 8 - (g.layer - 1) * 14);
-    const str = [g.name, sizeText(g), showDims && diaText(g), speedText(g, true), g === out ? 'OUT' : g.motor ? 'M' : ''].filter(Boolean).join('  ');
+    const str = [g.label ? `${g.name} ${g.label}` : g.name, sizeText(g), showDims && diaText(g), speedText(g, true), g === out ? 'OUT' : g.motor ? 'M' : ''].filter(Boolean).join('  ');
+    ctx.globalAlpha = onActive(g) ? 1 : 0.45;
     text(str, sx, sy, collide.has(g.id) ? C.jam : g.motor ? C.brass : g === out ? C.select : C.ink);
   }
+  ctx.globalAlpha = 1;
   if (showDims) for (const m of meshes) if (shown(m.a) && shown(m.b) && isVert(m.a)) text(`a ${dist(m.a, m.b).toFixed(dist(m.a, m.b) % 1 ? 1 : 0)}`, X((m.a.x + m.b.x) / 2), Y((m.a.y + m.b.y) / 2), C.select);
+  hydLegend(W - 136, bh + 30);
   if (boxSel) { ctx.strokeStyle = C.select; ctx.lineWidth = 1; ctx.setLineDash([5, 3]); ctx.strokeRect(boxSel.x0, boxSel.y0, boxSel.x1 - boxSel.x0, boxSel.y1 - boxSel.y0); ctx.setLineDash([]); ctx.globalAlpha = 0.08; ctx.fillStyle = C.select; ctx.fillRect(boxSel.x0, boxSel.y0, boxSel.x1 - boxSel.x0, boxSel.y1 - boxSel.y0); ctx.globalAlpha = 1; }
   ctx.restore();
 }
@@ -288,7 +327,8 @@ function drawSide(dpr, s, bh) {
   ctx.lineWidth = 0.7 / s; ctx.globalAlpha = 0.5; ctx.beginPath();
   for (let x = Math.floor(x0 / 5) * 5; x <= x1; x += 5) { ctx.moveTo(x, BASE); ctx.lineTo(x - 3, BASE + 3); } ctx.stroke(); ctx.globalAlpha = 1;
 
-  const rect = (x, r, z0, z1, fill, ink) => { ctx.fillStyle = fill; ctx.fillRect(x - r, -z1, 2 * r, z1 - z0); ctx.strokeStyle = ink; ctx.lineWidth = 1.2 / s; ctx.strokeRect(x - r, -z1, 2 * r, z1 - z0); };
+  const rect = (x, r, z0, z1, fill, ink) => { ctx.fillStyle = schemeMode ? C.paper : fill;   // in scheme mode a part seen edge-on is its outline
+    ctx.fillRect(x - r, -z1, 2 * r, z1 - z0); ctx.strokeStyle = ink; ctx.lineWidth = 1.2 / s; ctx.strokeRect(x - r, -z1, 2 * r, z1 - z0); };
   const teeth = (x, r, z, ang, z0, z1, ink) => {
     ctx.beginPath(); for (let j = 0; j < z; j++) { const a = ang + TAU * j / z; if (Math.sin(a) > 0) { const X = x + r * Math.cos(a); ctx.moveTo(X, -z0); ctx.lineTo(X, -z1); } }
     ctx.strokeStyle = ink; ctx.lineWidth = 0.8 / s; ctx.globalAlpha *= 0.55; ctx.stroke(); ctx.globalAlpha /= 0.55;
@@ -300,18 +340,20 @@ function drawSide(dpr, s, bh) {
     for (let k = -FW; k < w + FW; k += 2) { ctx.moveTo(xa + k, -z0); ctx.lineTo(xa + k + FW, -z1); } ctx.stroke(); ctx.restore();
     ctx.strokeStyle = ink; ctx.lineWidth = 1.2 / s; ctx.strokeRect(xa, -z1, w, z1 - z0);
   };
-  const dim = l => { ctx.globalAlpha = layerShown(l) ? 1 : 0.22; };
+  const dim = l => { ctx.globalAlpha = !layerShown(l) ? 0.18 : l === activeLayer ? 1 : 0.5; };
+  ctx.fillStyle = C.select; ctx.globalAlpha = 0.08; ctx.fillRect(x0, -(activeLayer * LP + FW + 4), x1 - x0, FW + 8); ctx.globalAlpha = 1;   // the active layer's band
   const order = [...parts].sort((p, q) => p.y - q.y || p.layer - q.layer);
   // shafts first: each runs through the layers it spans, in a bearing at both ends
-  const bearing = (x, z) => { ctx.fillStyle = C.panel; ctx.strokeStyle = C.ink; ctx.lineWidth = 1 / s; for (const sd of [-1, 1]) { ctx.fillRect(x + sd * 4.6 - 1.8, -z - 1.6, 3.6, 3.2); ctx.strokeRect(x + sd * 4.6 - 1.8, -z - 1.6, 3.6, 3.2); } };
+  const bearing = (x, z) => { if (schemeMode) { ctx.strokeStyle = C.ink; ctx.lineWidth = 1.4 / s; ctx.beginPath(); for (const sd of [-1, 1]) { ctx.moveTo(x + sd * 2.6, -z - 2.4); ctx.lineTo(x + sd * 2.6, -z + 2.4); } ctx.stroke(); return; }   // GOST 2.770: a bearing is two dashes along the shaft
+    ctx.fillStyle = C.panel; ctx.strokeStyle = C.ink; ctx.lineWidth = 1 / s; for (const sd of [-1, 1]) { ctx.fillRect(x + sd * 4.6 - 1.8, -z - 1.6, 3.6, 3.2); ctx.strokeRect(x + sd * 4.6 - 1.8, -z - 1.6, 3.6, 3.2); } };
   const covered = p => parts.some(q => isShaft(q) && same(q, p) && covers(q, p.layer));
   for (const g of order) {
     if (isShaft(g)) {
-      ctx.globalAlpha = shown(g) ? 1 : 0.22;
+      ctx.globalAlpha = !shown(g) ? 0.18 : onActive(g) ? 1 : 0.5;
       const z0 = g.l0 * LP - 3.5, z1 = g.l1 * LP + FW + 3.5, col = g.motor ? C.brass : collide.has(g.id) ? C.jam : g.w ? C.shaft : C.muted;
-      ctx.fillStyle = col; ctx.fillRect(g.x - 2.4, -z1, 4.8, z1 - z0);
+      const hw = schemeMode ? 0.9 : 2.4; ctx.fillStyle = schemeMode ? C.ink : col; ctx.fillRect(g.x - hw, -z1, 2 * hw, z1 - z0);   // GOST 2.770: a shaft is a line
       const an = angle(g); ctx.strokeStyle = C.paper; ctx.lineWidth = 0.8; ctx.beginPath(); // a keyway line that sweeps across as the shaft turns
-      if (Math.sin(an) > 0) { const kx = g.x + 2.4 * Math.cos(an); ctx.moveTo(kx, -z0); ctx.lineTo(kx, -z1); } ctx.stroke();
+      if (!schemeMode && Math.sin(an) > 0) { const kx = g.x + 2.4 * Math.cos(an); ctx.moveTo(kx, -z0); ctx.lineTo(kx, -z1); } ctx.stroke();
       bearing(g.x, z0 + 1.6); bearing(g.x, z1 - 1.6);
       if (sel.has(g.id)) { ctx.strokeStyle = C.select; ctx.lineWidth = 2 / s; ctx.strokeRect(g.x - 4, -z1 - 1, 8, z1 - z0 + 2); }
     } else if (isVert(g) && !g.mount && !covered(g)) { // a part with no shaft through it turns on its own stub axle
@@ -326,6 +368,15 @@ function drawSide(dpr, s, bh) {
   for (const g of order) {
     if (isShaft(g)) continue;
     dim(g.layer);
+    if (isHyd(g) && !isLink(g)) { rect(g.x, g.type === 'hvalve' ? 18 : g.type === 'hnode' ? 2.5 : 9, g.layer * LP + 1.5, g.layer * LP + FW - 1.5, fillOf(g), C.ink); if (sel.has(g.id)) { ctx.strokeStyle = C.select; ctx.lineWidth = 2 / s; ctx.strokeRect(g.x - 11, -(g.layer * LP + FW), 22, FW); } continue; }
+    if (T(g).grp === 'heat') { rect(g.x, 10, g.layer * LP + 1, g.layer * LP + FW - 1, fillOf(g), C.ink); continue; }
+    if (IO_ROUND.includes(g.type)) { rect(g.x, g.d / 2, g.layer * LP, g.layer * LP + FW, g.motor ? C.brass : fillOf(g), C.ink); continue; }
+    if (isLink(g)) { // a link is a thin plate over the span of its joints
+      const xs = g.type === 'guide' ? [g.x - Math.abs(Math.cos(g.dir)) * g.len / 2, g.x + Math.abs(Math.cos(g.dir)) * g.len / 2] : jointsOf(g).map((_, k) => jointPos(g, k).x), lo = Math.min(...xs), hi = Math.max(...xs), hw = Math.max(SLIDES.includes(g.type) ? 8 : 2.5, (hi - lo) / 2);
+      rect((lo + hi) / 2, hw, g.layer * LP + 3, g.layer * LP + FW - 3, g.type === 'pivot' || g.type === 'guide' ? C.muted : fillOf(g), C.ink);
+      if (sel.has(g.id)) { ctx.strokeStyle = C.select; ctx.lineWidth = 2 / s; ctx.strokeRect((lo + hi) / 2 - hw - 1.5, -(g.layer * LP + FW - 1.5), 2 * hw + 3, FW - 3); }
+      continue;
+    }
     const zb = g.layer * LP, bad = collide.has(g.id), ink = bad ? C.jam : C.ink, fill = fillOf(g), main = g.motor ? C.brass : fill, an = angle(g);
     const c = Math.cos(g.dir || 0), ac = Math.abs(c), as = Math.abs(Math.sin(g.dir || 0)), zc = zb + FW / 2;
     switch (g.type) {
@@ -350,6 +401,8 @@ function drawSide(dpr, s, bh) {
         break;
       }
       case 'rack': rect(g.x, halfW(g), zb + 1, zb + FW - 1, fill, ink); break;
+      case 'emotor': rect(g.x, g.d / 2, zb, zb + FW, C.brass, ink); break;
+      case 'machine': rect(g.x, g.d / 2, zb, zb + FW, fill, ink); break;
       case 'pulley': case 'fric': {
         const r = g.d / 2, e = g.type === 'pulley' ? 1.5 : 0;
         rect(g.x, r + e, zb, zb + FW, main, ink); teeth(g.x, r, 6, an, zb + 1.5, zb + FW - 1.5, ink);
@@ -396,10 +449,14 @@ function drawSide(dpr, s, bh) {
     const z0 = belt ? zb + 2.2 : zb + 3.2, z1 = belt ? zb + FW - 2.2 : zb + 6.8;
     ctx.fillStyle = C.ink; ctx.globalAlpha *= belt ? 0.85 : 0.5; ctx.fillRect(xa, -z1, xb - xa, z1 - z0);
   }
-  ctx.globalAlpha = 1;
+  if (schemeMode) for (const g of order) { // GOST 2.770: a cross where a part is fixed on its shaft
+    if (isShaft(g) || !isVert(g) || g.loose || g.mount || !covered(g) || ty(g, 'carrier', 'ring', 'clutch', 'diff')) continue;
+    dim(g.layer); const zc = g.layer * LP + FW / 2, k = 2.2; ctx.strokeStyle = C.ink; ctx.lineWidth = 1.2 / s; ctx.beginPath(); ctx.moveTo(g.x - k, -zc - k); ctx.lineTo(g.x + k, -zc + k); ctx.moveTo(g.x - k, -zc + k); ctx.lineTo(g.x + k, -zc - k); ctx.stroke();
+  }
+  ctx.globalAlpha = 1; pipesSide(s);
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   ctx.font = `500 12px ${C.mono}`; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
-  for (let l = 0; l < layerCount; l++) { const y = by - (l * LP + FW / 2) * s; ctx.strokeStyle = C.paper; ctx.lineWidth = 4; ctx.strokeText(LET(l), 10, y); ctx.fillStyle = l === activeLayer ? C.ink : C.muted; ctx.fillText(LET(l), 10, y); }
+  for (let l = 0; l < layerCount; l++) { const y = by - (l * LP + FW / 2) * s; ctx.strokeStyle = C.paper; ctx.lineWidth = 4; const lb = layerLabel(l) + (lockedLayers.has(l) ? ' ⊘' : ''); ctx.strokeText(lb, 10, y); ctx.fillStyle = l === activeLayer ? C.select : C.muted; ctx.fillText(lb, 10, y); }
   ctx.restore();
 }
 

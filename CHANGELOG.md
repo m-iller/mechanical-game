@@ -1,0 +1,48 @@
+# Changelog
+
+## 3.0.0-beta.1 (branch `engineering-tool`, not released yet)
+
+Gear Bench is growing from a drive sandbox into a rough-figures tool for mechanical engineering. Plan and status: `docs/ROADMAP.md`, `docs/PROGRESS.md`.
+
+### Added
+- **Electric motor** as a part of its own, with a mechanical characteristic: induction (simplified Kloss formula), DC, stepper, or the quick "set speed" and "set torque" sources. Any motor can switch between these.
+- **Black-box machine**: a named consumer with a load law (constant torque, linear, fan law, table) and an efficiency. Any rotating part can also carry a load.
+- **Operating point and power flow**: a train settles where the motor's torque meets the loads reduced to its shaft; torque and power at every part come from the power actually passing through it.
+- **"Where this number comes from"**: click an underlined figure to see its formula, the numbers put into it and the assumptions.
+- **Warnings**: motor stall, overload, a motor that cannot start under its load, an undriven load, undercut below 17 teeth.
+- **Layers**: only the active layer takes the pointer, the others are drawn faded and let clicks through. Layers can be named and locked. "Only active layer" is a mode that follows the active layer.
+- **Editable side view**: drag a part along x and between layers, pull a shaft by its ends, click a layer's letter to make it active.
+- **Kinematic scheme**: the top view draws parts as scheme symbols after GOST 2.770-68 (pitch circles, belt and chain lines, a cross for a part fixed on its shaft, ground hatching). The "Scheme" button switches back to drawn parts.
+- Templates "Motor and fan" and "Motor, belt, planetary, chain, conveyor".
+- Calculation core without DOM in `src/js/core/` (units, explanations, warnings, energy ports, scene migrations, load characteristics) and tests: `npm test`.
+
+- **Mechanisms from separate links**: frame hinge and guide, crank, connecting rod, rocker, slider, slotted link, sliding block, link with several joints. Kinematic pairs appear when a joint is dropped on a joint or a slider on a guide, and go when the link is pulled away; a pair can be made fixed or removed in the panel. The crank sits on a shaft or has its own motor. Mobility by Chebyshev's formula with warnings for an under- or over-constrained chain. Templates "Slider-crank from links" and "Four-bar linkage".
+- **Analysis over one turn of the crank**: graphs of travel, speed and acceleration (or angle, angular speed and acceleration) for the picked link with a marker at the current position, joint paths on the bench, stroke and peak values, Grashof's rule for a four-bar.
+- **Forces**: a resisting force on a slider over part of its stroke, link masses, the moment the crank needs over the turn (kinetostatics), and its mean as a load on the drive.
+- **Flywheel**: excess work, speed fluctuation δ for the flywheels on the crank shaft, and the inertia needed for δ = 1/20. Template "Crank press with flywheel".
+- **Cams**: a cam and a roller follower as links with a higher pair. Motion laws (cycloidal, harmonic, constant acceleration, constant speed), surface profile, pressure angle, base radius for α ≤ 30°, curvature check, follower graphs. Template "Cam drive of a valve".
+- **Structure of mechanisms**: redundant constraints by Malyshev's formula and the split into Assur groups.
+- **Planetary tooth numbers**: coaxial, neighbour and assembly conditions for the stage around a carrier, the profile shift needed below 17 teeth, and a picker that offers tooth numbers for a wanted ratio.
+- **Hydraulic drive**: tank, pump, hydraulic motor, cylinder, 4/3 directional valve switched by a click, throttle, check and relief valves, tee. Pipes are laid by clicks from port to port with corners; ending on another pipe makes a tee. The network is solved in steady state: flows, pressures, losses for laminar and turbulent flow, Reynolds number, recommended speeds.
+- **Flow on the bench**: pipe colour shows pressure with a legend, marks run along the line at the speed of the flow, an arrow shows its direction; a line with no flow stands still, and a relief valve dumping to the tank shows on the return line.
+- **Hydraulics meets mechanics**: the pump takes its speed from a shaft and loads the motor; a cylinder is a link of changing length in a mechanism and stops at its end or when the linkage can go no further. Templates "Pump, valve, cylinder" and "Excavator boom".
+- **Piston engine**: a source built from its cycle (Otto or Diesel): displacement, mean indicated pressure, torque, indicator diagram, torque over 720° for the chosen number of cylinders, flywheel figures.
+- **Generator and heater**: the generator loads the shaft and sends its power down a wire to a heater, whose temperature rises as a thermal mass; a lamp on the generator glows with the load. A heater can also be a friction brake on a shaft.
+- **More sources and consumers**: hand crank, weight on a rope, spring motor, hoist with a load. Template "Engine, flywheel, generator, heater".
+- Heat-engine cores: Brayton and Rankine cycles with fits to the steam tables, one axial turbine stage with speed triangles.
+- **Gas-turbine and steam plant**: compressor, combustor, turbine, boiler, condenser, feed pump and stack as blocks joined by gas and steam lines with the flow shown on them. Cycle figures (Brayton, Rankine), and for a turbine the speed triangles of its stage at the speed the shaft has. Templates "Gas-turbine set" and "Steam plant".
+- **Belt conveyor** as a consumer; in scheme mode the side view shows outlines with a cross where a part is fixed on its shaft.
+- **Mechanisms**: plans of velocities and accelerations for the current position, dead points, pressure angle of a slider and transmission angle of a rocker with warnings.
+- **Hydraulics**: accumulator, and a reducer loss where pipes of different bore meet.
+- Reactions in a link's pairs in the panel; offset cam follower; pipes and wires can be laid in the side view; a cylinder can carry the weight of the links (virtual work); the gas turbine's flow can follow the shaft speed.
+- **Geneva wheel and ratchet wheel as links**: the wheel is driven by the pin of a crank, the ratchet by a pawl on any swinging link. Templates "Geneva drive from links" and "Ratchet feed from links".
+- **Flat-faced and swinging cam followers**, with the cam surface, pressure angle and curvature worked out for each. Template "Cam with a swinging follower".
+- **Pipe corners can be dragged** in the top view; dragging a straight run of a picked pipe makes a corner, and a corner put back in line goes away.
+- Side view in scheme mode draws shafts as lines and bearings as two dashes.
+
+### Changed
+- Scenes are saved in format v5. Scenes from 2.x and earlier 3.0 builds open and are migrated on load.
+- With loads on the bench, torque figures show the real power flow. Without loads the old estimate stays (all motor power taken at the chosen output) and says so in its explanation.
+
+### Known limits
+See the section "Известные ограничения и допущения" in `docs/PROGRESS.md`.

@@ -40,6 +40,21 @@ How they connect:
 
 All teeth use module 2 mm and a 20° pressure angle. Chain is 8 mm pitch (ISO 05B).
 
+## Sources, consumers and rough figures
+
+The branch `engineering-tool` turns the sandbox into a tool for quick estimates, to an accuracy of 10–20 %. See [docs/ROADMAP.md](docs/ROADMAP.md) for the plan and [CHANGELOG.md](CHANGELOG.md) for what is in.
+
+- **Electric motor**: a part with a mechanical characteristic. Induction (rated power, rated speed, starting and breakdown torque), DC, stepper, or an ideal "set speed" or "set torque" source.
+- **Machine (black box)**: a named consumer with a load law (constant, linear, fan law, table) and an efficiency.
+- The train runs at the speed where the motor's torque equals the load torques reduced to its shaft. Torque and power at each part follow the power passing through it.
+- Click an underlined figure to see **where it comes from**: the formula, the numbers and the assumptions.
+- The top view is a **kinematic scheme** with symbols after GOST 2.770-68; the "Scheme" button switches to drawn parts and back.
+- **Mechanisms from links**: crank, rod, rocker, slider, slotted link, cam and follower. Pairs appear where joints are dropped together. Graphs over a turn of the crank, forces, flywheel.
+- **Hydraulic drive**: pump, valves, cylinders and motors joined by pipes, with the flow and the pressure shown on the lines.
+- **Sources and consumers**: piston engine with its indicator diagram, hand crank, weight, spring; generator with a lamp, heater, hoist, belt conveyor.
+- **Heat plant**: compressor, combustor, turbine, boiler, condenser on gas and steam lines; Brayton and Rankine figures and the turbine's speed triangles.
+- **Warnings** tell when a model is outside its range: stall, overload, undercut and others.
+
 ## What it shows
 
 - Speed and direction of every part, for any number of motors.
@@ -52,7 +67,8 @@ All teeth use module 2 mm and a 20° pressure angle. Chain is 8 mm pitch (ISO 05
 
 - **Drag** a part in the top view; it snaps into mesh, onto a shaft axis or onto a carrier pin.
 - **Hold** on empty space, then drag, to select an area. Shift-click adds to the selection. Selected parts move, rotate, change layer, duplicate and delete together.
-- **Layers**: add, delete, reorder, hide. The side view above the top view shows how shafts run through them.
+- **Layers**: add, delete, reorder, hide, lock, name. Only the active layer takes the pointer; the others are faded and let clicks through.
+- **Side view**: drag a part along x and up or down between layers, pull a shaft by its ends, click a layer's letter to make it active.
 - Space pauses. R rotates the selection. Delete removes it. Ctrl+D duplicates. Scroll or pinch to zoom.
 
 Your bench is saved automatically between sessions.
@@ -64,6 +80,7 @@ npm install
 npm start          # desktop app
 npm run bundle     # dist/gear-bench.html, one self-contained file
 npm run dist       # installers for the current OS, in release/
+npm test           # calculation-core tests
 ```
 
 The app is plain HTML, CSS and JavaScript with no runtime dependencies. `main.js` is a small Electron shell around it.
@@ -71,9 +88,15 @@ The app is plain HTML, CSS and JavaScript with no runtime dependencies. `main.js
 | File | What is in it |
 | --- | --- |
 | `src/js/strings.js` | interface text, English and Russian |
+| `src/js/core/` | DOM-free core: units, explanations, warnings, ports, scene migrations, load characteristics |
 | `src/js/model.js` | part catalogue, scene state, layers, save and load |
 | `src/js/paths.js` | part outlines, belt and chain routing |
 | `src/js/solver.js` | kinematics: speeds, tooth phases, locks |
+| `src/js/power.js` | operating point of each train, power flow, applicability checks |
+| `src/js/domains/tmm/` | mechanisms: linkage solver, cams, links on the bench, cycle analysis, panel |
+| `src/js/domains/pipes/`, `hydro/` | pipe losses, hydraulic network solver, hydraulics on the bench |
+| `src/js/domains/io/`, `thermo/` | engine, generator, heater and other sources and consumers; engine cycle, Brayton, Rankine, turbine stage; plant blocks on the bench |
+| `src/js/scheme.js` | scheme symbols: drives, links, hydraulics, pipes, plant blocks |
 | `src/js/draw.js` | top and side views |
 | `src/js/templates.js` | ready-made assemblies and the opening example |
 | `src/js/ui.js` | panel, pointer and keyboard input |
@@ -90,11 +113,11 @@ Bump `version` in `package.json` and push to `main`. The `Release` workflow buil
 
 This is a kinematic model: rigid parts, exact ratios, no dynamics.
 
-- No belt slip, chain polygon effect, backlash or inertia. Torque figures use typical stage efficiencies and assume all power leaves at the chosen output.
+- No belt slip, chain polygon effect, backlash or inertia: the operating point is a steady state. Torque figures use typical stage efficiencies. With no loads on the bench, all power is assumed to leave at the chosen output.
 - A differential with nothing deciding the split turns both shafts equally.
 - Tooth profiles are true involutes, without undercut or root fillets. Bevel and worm teeth are drawn schematically.
 - The rack is endless: its teeth scroll while the bar stays between its guides.
-- Crank and piston, cam and follower, the Geneva drive and the differential are single units, not assembled from loose parts.
+- The older ready-made units of the "Mechanisms" group (crank and piston, cam and follower, Geneva drive, ratchet) and the differential are single units; the same mechanisms can be put together from links of the "Linkages" group.
 - Two coaxial shafts cannot pass through the same layer, so there are no hollow shafts.
 
 ## Licence

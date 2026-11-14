@@ -33,9 +33,10 @@ class Lin {
 }
 
 const nameOf = ids => ids.map(id => (byId(id) || {}).name).filter(Boolean).join(', ');
-let solved = { eff: new Map(), hops: new Map(), pin: 0 };   // per body: efficiency and distance from the nearest motor
+let solved = { eff: new Map(), hops: new Map(), prev: new Map(), pin: 0 };   // per body: efficiency and distance from the nearest motor
 
-function solve() {
+// Speeds for the motor speeds as they stand in p.motor.rpm. solve() in power.js wraps this with the operating point and the power flow.
+function solveKin() {
   place();
   links = links.filter(L => { L.ids = L.ids.filter(id => { const p = byId(id); return p && p.type === (L.kind === 'belt' ? 'pulley' : 'sprocket'); }); return L.ids.length >= 2; });
   if (outId != null && !byId(outId)) outId = null;
@@ -89,7 +90,7 @@ function solve() {
   let hit = null;
   for (let i = 0; i < parts.length; i++) for (let j = i + 1; j < parts.length; j++) {
     let a = parts[i], b = parts[j];
-    if (a.layer !== b.layer || isShaft(a) || isShaft(b) || a.type === 'hshaft' || b.type === 'hshaft') continue;
+    if (a.layer !== b.layer || isShaft(a) || isShaft(b) || a.type === 'hshaft' || b.type === 'hshaft' || isLink(a) || isLink(b) || isPlant(a) || isPlant(b)) continue;
     if (b.type === 'rack' || b.type === 'worm' || b.type === 'hbevel' || b.type === 'ring') [a, b] = [b, a];
     if (a.type === 'rack') {
       if (kind(b) !== 'gear' || b.mount) continue;
@@ -160,7 +161,15 @@ function solve() {
     const [v, s] = V(o), res = lin.add([[v, 1]], val * s);
     if (res.dep && Math.abs(res.r) > 1e-6) lock(key, [fixed.get(v) ? fixed.get(v).id : p.id, p.id]); else if (!res.dep) fixed.set(v, p);
   };
-  for (const p of parts) if (p.motor) pinTo(p, p.motor.rpm, p, 'lock.motors');
+  // trains: bodies joined by any chain of contacts. In each train one motor with a characteristic leads; the others follow it.
+  const cp = Array.from({ length: nv }, (_, i) => i), cf = i => { while (cp[i] !== i) i = cp[i] = cp[cp[i]]; return i; };
+  for (const e of eqs) { const vs = e.terms.map(x => V(x[0])[0]); for (const v of vs) cp[cf(v)] = cf(vs[0]); }
+  const comp = o => cf(V(o)[0]), leaders = new Map();
+  for (const p of parts) if (p.motor) {
+    delete p.motor.follow;
+    if (isDyn(p.motor)) { const c = comp(p); if (leaders.has(c)) { p.motor.follow = leaders.get(c).id; continue; } leaders.set(c, p); }
+    pinTo(p, p.motor.rpm, p, 'lock.motors');
+  }
   for (const p of parts) if (p.held || (p.type === 'brake' && p.on)) pinTo(p, 0, p, 'lock.held');
   for (const e of eqs) { const res = lin.add(e.terms.map(term), 0); if (res.dep && Math.abs(res.r) > 1e-6 * res.sc) lock('lock.jam', e.ids); }
   let { val, det } = lin.values();
@@ -174,12 +183,13 @@ function solve() {
   for (const e of eqs) { const vs = e.terms.map(x => V(x[0])[0]); for (const x of vs) for (const y of vs) if (x !== y) adj[x].push({ y, e }); }
   const hops = new Map(), eff = new Map(), reached = new Set(), q = [];
   for (const p of parts) if (p.motor) { const v = V(p)[0]; if (!hops.has(v)) { hops.set(v, 0); eff.set(v, 1); q.push(v); } }
-  for (let i = 0; i < q.length; i++) for (const { y, e } of adj[q[i]]) if (!hops.has(y)) { hops.set(y, hops.get(q[i]) + 1); eff.set(y, eff.get(q[i]) * e.eta); q.push(y); }
+  const prev = new Map();   // the way back to the nearest motor: body -> { x: the body before it, e: the contact between them }
+  for (let i = 0; i < q.length; i++) for (const { y, e } of adj[q[i]]) if (!hops.has(y)) { hops.set(y, hops.get(q[i]) + 1); eff.set(y, eff.get(q[i]) * e.eta); prev.set(y, { x: q[i], e }); q.push(y); }
   // the same walk, but a worm mesh only passes from worm to wheel: a worm cannot be driven by its wheel
   const dq = parts.filter(p => p.motor).map(p => V(p)[0]); dq.forEach(v => reached.add(v));
   for (let i = 0; i < dq.length; i++) for (const { y, e } of adj[dq[i]]) { if (e.worm && V(e.worm)[0] === y) continue; if (!reached.has(y)) { reached.add(y); dq.push(y); } }
   for (const e of eqs) if (e.worm && e.wheel.w && !reached.has(V(e.worm)[0])) lock('lock.worm', [e.worm.id, e.wheel.id]);
-  solved = { eff, hops, V, pin: parts.reduce((s, p) => s + (p.motor ? p.motor.tq * Math.abs(p.w) * RPM : 0), 0) };
+  solved = { eff, hops, prev, V, comp, pin: parts.reduce((s, p) => s + (p.motor ? p.motor.tq * Math.abs(p.w) * RPM : 0), 0) };
   // a part that hangs on the driven train but has a degree of freedom nobody controls
   const loose = parts.find(p => !isShaft(p) && p.und && hops.has(V(p)[0]) && !det[V(p)[0]]);
   if (loose) hintMsg = t('hint.free', { a: loose.name });
@@ -209,6 +219,7 @@ const speedOf = (p, o = outOf(p)) => p.type === 'rack' ? o.w * RPM : o.w;
    Returns N·m, or N for a rack. */
 function torqueAt(p, o = outOf(p)) {
   const v = solved.V ? solved.V(o)[0] : -1; if (!o.w || !solved.eff.has(v)) return null;
+  if (power.has) { const pf = power.flow.get(v) || 0, wf = Math.abs(o.w) * RPM; return p.type === 'rack' ? pf / wf * 1000 : pf / wf; }   // with loads on the bench: the power really passing through
   const pw = solved.pin * solved.eff.get(v), w = Math.abs(o.w) * RPM;
   return p.type === 'rack' ? pw / w * 1000 : pw / w;
 }

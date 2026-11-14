@@ -1,6 +1,6 @@
 {
   "name": "mechanical-game",
-  "version": "2.1.1",
+  "version": "3.0.0-beta.1",
   "description": "Gear Bench: build machines from separate gears, shafts, belts, chains and mechanisms, and watch them run.",
   "main": "main.js",
   "homepage": "https://github.com/m-iller/mechanical-game",
@@ -19,7 +19,8 @@
     "bundle": "node scripts/bundle.mjs",
     "dist": "electron-builder --publish never",
     "dist:linux": "electron-builder --linux --publish never",
-    "dist:win": "electron-builder --win --publish never"
+    "dist:win": "electron-builder --win --publish never",
+    "test": "node --test --test-reporter=dot \"tests/*.test.mjs\""
   },
   "devDependencies": {
     "electron": "^45.0.0",

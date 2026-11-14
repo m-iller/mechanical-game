@@ -15,6 +15,8 @@ const rpmText = w => !w ? t('s.stopped') : `${fmt(Math.abs(w), Math.abs(w) < 10 
 const sizeText = p => {
   switch (p.type) {
     case 'worm': return `z${p.zw}`;
+    case 'emotor': return isDyn(p.motor) ? fmtU(p.motor.P, 'power') : '';
+    case 'machine': return '';
     case 'carrier': return `r${p.r}`;
     case 'crank': return `r${p.r}`;
     case 'cam': return `h${p.h}`;
@@ -77,7 +79,12 @@ function specRows(p) {
 function ioRows() {
   const ms = parts.filter(p => p.motor), rows = [];
   if (!ms.length) return [[t('io.in'), t('io.noMotor')]];
-  for (const p of ms) rows.push([`${t('io.in')} ${p.name}`, `${fmt(p.motor.rpm)} ${t('u.rpm')} · ${fmtT(p.motor.tq)} ${t('u.Nm')} · ${fmtT(p.motor.tq * Math.abs(p.w) * RPM)} ${t('u.W')}`]);
+  if (power.has) { // real loads on the bench: what each takes, and what the whole drive loses on the way
+    let Pm = 0, Pu = 0;
+    for (const p of parts) if (p.load) { const L = power.load.get(p.id); if (!L) continue; Pm += L.Pmotor; Pu += L.Pout; rows.push([p.label ? `${p.name} ${p.label}` : p.name, L.fed && L.w ? `${rpmText(outOf(p).w)} · ${fmtT(L.M)} ${t('u.Nm')} · ${fmtU(L.Pout, 'power')}` : t('s.idle')]); }
+    if (Pm > 0) rows.push([t('io.etaTotal'), `${(100 * Pu / Pm).toFixed(0)} %`, ex('η', Pu / Pm, '%', 'η = Σ P_out / Σ P_motor', [['Σ P_out', Pu, 'power'], ['Σ P_motor', Pm, 'power']], ['ex.eta', 'ex.machineEta'])]);
+    return rows;
+  }
   const g = outPart();
   if (!g) { rows.push([t('io.out'), t('io.nothing')]); return rows; }
   const o = outOf(g), label = `${t('io.out')} ${g.name}${outId == null ? ` (${t('io.auto')})` : ''}`, tq = torqueAt(g);
@@ -85,13 +92,26 @@ function ioRows() {
   else if (tq == null) rows.push([label, t('s.idle')]);
   else {
     const pw = solved.pin * solved.eff.get(bodyOf(o));
-    rows.push([label, `${g.type === 'rack' ? fmt(Math.abs(o.w * RPM)) + ' ' + t('u.mms') : rpmText(o.w)} · ${tqText(g)} · ${fmtT(pw)} ${t('u.W')}`]);
-    if (ms.length === 1 && g.type !== 'rack' && ms[0].w) { const i = ms[0].w / o.w; rows.push([t('io.ratio'), `${Math.abs(i) >= 1 ? fmt(Math.abs(i), 2) + ' : 1' : '1 : ' + fmt(1 / Math.abs(i), 2)}${i < 0 ? ', ' + t('io.reversed') : ''}`]); }
-    rows.push([t('io.eta'), `${(100 * solved.eff.get(bodyOf(o))).toFixed(0)} %`]);
+    rows.push([label, `${g.type === 'rack' ? fmt(Math.abs(o.w * RPM)) + ' ' + t('u.mms') : rpmText(o.w)} · ${tqText(g)} · ${fmtT(pw)} ${t('u.W')}`, ex('P', pw, 'power', 'P_out = P_in·η,   M = P_out / ω', [['P_in', solved.pin, 'power'], ['η', solved.eff.get(bodyOf(o)), ''], ['ω', Math.abs(o.w) * RPM, g.type === 'rack' ? 'mm/s' : 'rpm']], ['ex.noLoads', 'ex.eta'])]);
+    if (ms.length === 1 && g.type !== 'rack' && ms[0].w) { const i = ms[0].w / o.w; rows.push([t('io.ratio'), `${Math.abs(i) >= 1 ? fmt(Math.abs(i), 2) + ' : 1' : '1 : ' + fmt(1 / Math.abs(i), 2)}${i < 0 ? ', ' + t('io.reversed') : ''}`, ex('i', Math.abs(i), '', 'i = n_in / n_out', [['n_in', Math.abs(ms[0].w) * RPM, 'rpm'], ['n_out', Math.abs(o.w) * RPM, 'rpm']], ['ex.rigid'])]); }
+    rows.push([t('io.eta'), `${(100 * solved.eff.get(bodyOf(o))).toFixed(0)} %`, ex('η', solved.eff.get(bodyOf(o)), '%', 'η = η₁·η₂·…', [], ['ex.eta'])]);
   }
   return rows;
 }
-const fillDl = (dl, rows) => { dl.textContent = ''; for (const [k, v] of rows) dl.append(el('dt', k), el('dd', v)); };
+// rows are [label, value] or [label, value, explanation]; a value with an explanation opens the "where from" box when clicked
+let why = null;
+const fillDl = (dl, rows) => {
+  dl.textContent = '';
+  for (const [k, v, e] of rows) {
+    const dd = el('dd', v);
+    if (e) { const id = (dl.dataset.why || '') + k; dd.className = 'ex'; dd.tabIndex = 0; dd.setAttribute('role', 'button'); dd.onclick = () => { why = why && why.id === id ? null : { id, title: k, e }; renderWhy(); }; dd.onkeydown = ev => { if (ev.key === 'Enter') dd.onclick(); }; if (why && why.id === id) why.e = e; }
+    dl.append(el('dt', k), dd);
+  }
+};
+function renderWhy() {
+  const box = $('why'); box.hidden = !why; if (!why) return;
+  $('why-t').textContent = `${t('why.title')}: ${why.title}`; $('why-b').textContent = exLines(why.e, t).join('\n');
+}
 
 /* ---------- panel ---------- */
 let motorsKey = '', selKey = '', selRefresh = [], armedLayer = null;
@@ -110,20 +130,92 @@ const rowOf = (...kids) => { const r = el('div', null, { className: 'row' }); r.
 const layerSeg = (cur, pickL) => { const seg = el('div', null, { className: 'seg' }); for (let l = 0; l < layerCount; l++) seg.append(btn(LET(l), () => pickL(l), cur === l)); return seg; };
 const labelled = (label, node) => { const r = el('div', null, { className: 'row' }); r.append(el('span', label, { className: 'lab' }), node); return r; };
 
+const MOTOR_KINDS = ['speed', 'torque', 'induction', 'dc', 'stepper'], LOAD_KINDS = ['const', 'linear', 'quad', 'table'];
+const choice = (items, value, onPick) => { const sl = el('select'); for (const [v, label] of items) sl.append(el('option', label, { value: v })); sl.value = value; sl.onchange = () => onPick(sl.value); return sl; };
+// switching a motor to another kind fills in what that kind needs from what is already known
+function setMotorKind(m, kind) {
+  const dir = motorDir(m);
+  if (kind !== 'speed') {
+    if (m.P == null) m.P = Math.max(10, Math.round(Math.abs(m.tq * m.rpm * RPM))) || 370;
+    if (!m.n) m.n = Math.round(Math.abs(m.rpm)) || 1320;
+    m.n = dir * Math.abs(m.n); if (m.ks == null) m.ks = 2.2; if (m.km == null) m.km = 2.2;
+  } else m.rpm = dir * Math.round(Math.abs(m.n || m.rpm || 60));
+  m.kind = kind;
+}
+function motorFields(p) {
+  const m = p.motor, k = m.kind || 'speed', dir = () => motorDir(m), out = [];
+  const nSl = (key, lo, hi) => slider(t(key), lo, hi, 1, () => Math.round(Math.abs(m.n)), v => { m.n = dir() * v; commit(); }, t('u.rpm'));
+  const pSl = () => slider(t('motor.P'), 0.01, 500, 0.01, () => +(m.P / 1000).toFixed(3), v => { m.P = v * 1000; commit(); }, unitSym('kW'));
+  const kSl = (key, prop, lo, hi) => slider(t(key), lo, hi, 0.05, () => m[prop], v => { m[prop] = v; commit(); });
+  if (k === 'speed') out.push(slider(t('motor.speed'), -10000, 10000, 1, () => m.rpm, v => { m.rpm = v; commit(); }, t('u.rpm')), slider(t('motor.rated'), 0.01, 1000, 0.01, () => m.tq, v => { m.tq = v; commit(); }, t('u.Nm')));
+  else if (k === 'torque') out.push(slider(t('motor.torque'), 0.01, 1000, 0.01, () => m.tq, v => { m.tq = v; commit(); }, t('u.Nm')), nSl('motor.limit', 1, 10000));
+  else if (k === 'induction') out.push(pSl(), nSl('motor.nNom', 100, 2990), kSl('motor.ks', 'ks', 0.5, 4), kSl('motor.km', 'km', 1.1, 4));
+  else if (k === 'dc') out.push(pSl(), nSl('motor.nNom', 10, 20000), kSl('motor.ks', 'ks', 1.1, 10));
+  else out.push(nSl('motor.cmd', 1, 5000), pSl(), kSl('motor.ks', 'ks', 1, 5));
+  return out;
+}
+// what one source is doing, each figure with where it comes from
+function motorRows(p) {
+  const r = power.src.get(p.id), m = p.motor, k = m.kind || 'speed', rows = []; if (!r) return rows;
+  const s = r.s, nNote = { speed: 'ex.ideal', torque: 'ex.torque', induction: 'ex.kloss', dc: 'ex.dc', stepper: 'ex.stepper' }[k];
+  const nVars = k === 'induction' ? [['n₀', s.w0, 'rpm'], ['s', r.slip, '%'], ['s_k', s.sk, '%'], ['M_k', s.Mk, 'Nm'], ['M_L', r.M, 'Nm']] : s.ideal ? [] : [['n₀', s.w0, 'rpm'], ['M_L', r.M, 'Nm']];
+  const nForm = { speed: 'n = n_set', torque: 'M = M_set = M_L(n),  n ≤ n_max', induction: 'M(s) = 2·M_k / (s/s_k + s_k/s) = M_L,   n = n₀·(1 − s)', dc: 'M = M_start·(1 − n/n₀) = M_L', stepper: 'n = n_set,  M_L ≤ min(M_hold, P/ω)' }[k];
+  rows.push([t('io.n'), r.stalled ? t('io.stalled') : rpmText(p.w), ex('n', r.w, 'rpm', nForm, nVars, [nNote, 'ex.steady'])]);
+  if (power.has) {
+    const feeds = r.feeds.map(byId).filter(Boolean), lv = [];
+    for (const q of feeds) { const L = power.load.get(q.id), nm = q.label || q.name; lv.push([`M(${nm})`, L.M, 'Nm'], [`k(${nm})`, r.w ? L.w / r.w : 0, ''], [`η(${nm})`, L.etaPath, '']); }
+    rows.push([t('io.M'), `${fmtT(r.M)} ${t('u.Nm')}`, ex('M', r.M, 'Nm', 'M = Σ M_L·k / η,   k = n_L / n', lv, ['ex.steady', 'ex.eta'])]);
+    rows.push([t('io.P'), fmtU(r.P, 'power'), ex('P', r.P, 'power', 'P = M·ω', [['M', r.M, 'Nm'], ['ω', r.w, 'rpm']], [])]);
+    rows.push([t('io.loadPct'), `${fmtNum(100 * r.ratio)} %`, ex('M / M_nom', r.ratio, '%', k === 'speed' || k === 'torque' ? 'M / M_rated' : 'M / M_nom,   M_nom = P_nom / ω_nom', [['M', r.M, 'Nm'], ['M_nom', r.Mnom, 'Nm']], [])]);
+    if (k === 'induction' && !r.stalled) rows.push([t('io.slip'), `${fmtNum(100 * r.slip)} %`, ex('s', r.slip, '%', 's = (n₀ − n) / n₀', [['n₀', s.w0, 'rpm'], ['n', r.w, 'rpm']], ['ex.kloss'])]);
+  } else {
+    const Pa = (s.ideal && k === 'speed' ? m.tq : s.M(r.w)) * r.w;
+    rows.push([t('io.avail'), fmtU(Pa, 'power'), ex('P', Pa, 'power', 'P = M·ω', [['M', r.w ? Pa / r.w : 0, 'Nm'], ['ω', r.w, 'rpm']], ['ex.noLoads'])]);
+  }
+  return rows;
+}
 function renderMotors() {
-  const ms = parts.filter(p => p.motor), box = $('motors'), key = ms.map(p => p.id).join() + lang;
+  const ms = parts.filter(p => p.motor), box = $('motors'), key = ms.map(p => p.id + (p.motor.kind || '')).join() + lang;
   if (key !== motorsKey) {
     motorsKey = key; box.textContent = '';
     if (!ms.length) box.append(el('p', t('motor.none'), { className: 'hint' }));
     for (const p of ms) {
-      const card = el('div', null, { className: 'motor' }), head = rowOf(btn(p.name, () => pick([p.id])), btn(t('btn.reverse'), () => { p.motor.rpm = -p.motor.rpm; commit(); }), btn('×', () => { delete p.motor; commit(); }));
-      head.lastChild.setAttribute('aria-label', t('btn.removeMotor'));
-      const refs = []; const keep = selRefresh; selRefresh = refs;
-      card.append(head, slider(t('motor.speed'), -10000, 10000, 1, () => p.motor.rpm, v => { p.motor.rpm = v; commit(); }, t('u.rpm')), slider(t('motor.torque'), 0.01, 1000, 0.01, () => p.motor.tq, v => { p.motor.tq = v; ui(); save(); }, t('u.Nm')));
-      selRefresh = keep; card.sync = () => refs.forEach(f => f());
-      box.append(card);
+      const m = p.motor, card = el('div', null, { className: 'motor' });
+      const head = rowOf(btn(p.label ? `${p.name} ${p.label}` : p.name, () => pick([p.id])), btn(t('btn.reverse'), () => { m.rpm = -m.rpm; if (m.n) m.n = -m.n; commit(); }), p.type !== 'emotor' && btn('×', () => { delete p.motor; commit(); }));
+      if (p.type !== 'emotor') head.lastChild.setAttribute('aria-label', t('btn.removeMotor'));
+      const refs = [], keep = selRefresh, dl = el('dl'); selRefresh = refs;
+      card.append(head, rowOf(choice(MOTOR_KINDS.map(k => [k, t('mk.' + k)]), m.kind || 'speed', k => { setMotorKind(m, k); commit(); })), ...motorFields(p), dl);
+      selRefresh = keep; card.sync = () => { refs.forEach(f => f()); fillDl(dl, motorRows(p)); };
+      box.append(card); card.sync();
     }
   } else for (const c of box.children) if (c.sync) c.sync();
+}
+// the figures of one load
+function loadRows(p) {
+  const L = power.load.get(p.id), l = p.load; if (!L) return [];
+  const form = { const: 'M = M₀', linear: 'M = M₀·n / n₀', quad: 'M = M₀·(n / n₀)²', table: 'M = table(n)' }[l.kind], vars = l.kind === 'table' ? [['n', L.w, 'rpm']] : l.kind === 'const' ? [['M₀', l.tq, 'Nm']] : [['M₀', l.tq, 'Nm'], ['n', L.w, 'rpm'], ['n₀', toSI(Math.abs(l.n), 'rpm'), 'rpm']];
+  return [
+    [t('io.n'), rpmText(outOf(p).w), ex('n', L.w, 'rpm', 'n = n_motor·k', [], ['ex.rigid'])],
+    [t('io.M'), `${fmtT(L.M)} ${t('u.Nm')}`, ex('M', L.M, 'Nm', form, vars, ['ex.loadLaw'])],
+    [t('io.Pin'), fmtU(L.P, 'power'), ex('P', L.P, 'power', 'P = M·ω', [['M', L.M, 'Nm'], ['ω', L.w, 'rpm']], [])],
+    [t('io.Pout'), fmtU(L.Pout, 'power'), ex('P_out', L.Pout, 'power', 'P_out = η·P', [['η', L.eta, ''], ['P', L.P, 'power']], ['ex.machineEta'])],
+  ];
+}
+function loadFields(p) {
+  const l = p.load, out = [], name = el('input', null, { type: 'text', value: p.label || '', maxLength: 28, className: 'text' });
+  name.onchange = () => { p.label = name.value.trim() || undefined; if (!p.label) delete p.label; ui(); save(); };
+  out.push(labelled(t('load.name'), name), labelled(t('load.kind'), choice(LOAD_KINDS.map(k => [k, t('lk.' + k)]), l.kind, k => { l.kind = k; if (k === 'table' && !l.table) l.table = [[0, l.tq], [Math.abs(l.n), l.tq]]; commit(); })));
+  if (l.kind === 'table') {
+    const ta = el('textarea', null, { rows: 4, className: 'text', value: (l.table || []).map(r => r.join(' : ')).join('\n') });
+    ta.setAttribute('aria-label', t('load.table'));
+    ta.onchange = () => { const rows = ta.value.split('\n').map(r => r.split(/[:;\t]/).map(x => parseFloat(x.replace(',', '.')))).filter(r => r.length >= 2 && isFinite(r[0]) && isFinite(r[1])).map(r => [r[0], r[1]]); if (rows.length) { l.table = rows; commit(); } };
+    out.push(el('p', t('load.table'), { className: 'hint' }), ta);
+  } else {
+    out.push(slider(t(l.kind === 'const' ? 'motor.torque' : 'load.tq'), 0, 5000, 0.01, () => l.tq, v => { l.tq = v; commit(); }, t('u.Nm')));
+    if (l.kind !== 'const') out.push(slider(t('load.n'), 1, 20000, 1, () => Math.abs(l.n), v => { l.n = v; commit(); }, t('u.rpm')));
+  }
+  out.push(slider(t('load.eta'), 0.05, 1, 0.01, () => l.eta == null ? 1 : l.eta, v => { l.eta = v; commit(); }));
+  return out;
 }
 function renderLayers() {
   const box = $('layers'); box.textContent = '';
@@ -148,7 +240,7 @@ function renderLayers() {
 }
 function renderSel() {
   const ps = selParts(), p = ps.length === 1 ? ps[0] : null, body = $('sel-body');
-  const key = JSON.stringify([lang, layerCount, linkDraft && [linkDraft.kind, linkDraft.ids], outId, links.map(L => [L.ids, L.crossed]), ps.map(q => [q.id, q.type, q.layer, q.on, q.held, q.loose, !!q.motor, q.mount && q.mount.c, q.l0, q.l1])]);
+  const key = JSON.stringify([lang, layerCount, linkDraft && [linkDraft.kind, linkDraft.ids], outId, links.map(L => [L.ids, L.crossed]), ps.map(q => [q.id, q.type, q.layer, q.on, q.held, q.loose, !!q.motor, q.load && q.load.kind, q.mount && q.mount.c, q.l0, q.l1])]);
   $('sel-name').textContent = p ? `${p.name} · ${typeName(p)}` : ps.length ? t('sel.many', { n: ps.length }) : t('sel.none');
   if (key !== selKey) {
     selKey = key; selRefresh = []; body.textContent = '';
@@ -173,7 +265,8 @@ function renderSel() {
       else body.append(labelled(t('sel.layer'), layerSeg(p.layer, l => { setLayer(p, l); commit(); })));
       const tg = [];
       if (T0.tog) tg.push(btn(t(`tog.${p.type}.${p.on ? 1 : 0}`), () => { p.on = !p.on; commit(); }, p.on));
-      if (!isLin(p)) tg.push(btn(t('tog.motor'), () => { if (p.motor) delete p.motor; else p.motor = { rpm: 60, tq: 2 }; commit(); }, !!p.motor));
+      if (!isLin(p) && !ty(p, 'emotor', 'machine')) tg.push(btn(t('tog.motor'), () => { if (p.motor) delete p.motor; else { p.motor = { kind: 'speed', rpm: 60, tq: 2 }; delete p.load; } commit(); }, !!p.motor));
+      if (!isLin(p) && !isShaft(p) && !ty(p, 'emotor', 'machine', 'brake') && !p.motor) tg.push(btn(t('tog.load'), () => { if (p.load) delete p.load; else p.load = { kind: 'const', tq: 1, n: 1000, eta: 1 }; commit(); }, !!p.load));
       if (!isLin(p) && p.type !== 'brake') tg.push(btn(t('tog.held'), () => { p.held = !p.held; commit(); }, !!p.held));
       if (isVert(p) && !isShaft(p) && !ty(p, 'clutch', 'diff')) tg.push(btn(t('tog.loose'), () => { p.loose = !p.loose; commit(); }, !!p.loose));
       if (p.mount) tg.push(btn(t('tog.unmount'), () => { delete p.mount; commit(); }));
@@ -189,7 +282,8 @@ function renderSel() {
         }
         body.append(labelled(t(belt ? 'link.belts' : 'link.chains'), box), rowOf(btn(t(belt ? 'link.belt' : 'link.chain'), () => { linkDraft = { kind: belt ? 'belt' : 'chain', ids: [p.id] }; ui(); })));
       }
-      const dl = el('dl'); body.append(dl); selRefresh.push(() => fillDl(dl, specRows(p)));
+      if (p.load) body.append(...loadFields(p));
+      const dl = el('dl'); dl.dataset.why = p.id + ':'; body.append(dl); selRefresh.push(() => fillDl(dl, [...(p.load ? loadRows(p) : []), ...specRows(p)]));
       const rm = btn(t('btn.remove'), removeSel); rm.className = 'danger';
       body.append(rowOf(!isShaft(p) && !p.motor && btn(t(outId === p.id ? 'btn.clearOut' : 'btn.setOut'), () => { outId = outId === p.id ? null : p.id; ui(); save(); }, outId === p.id), btn(t('btn.duplicate'), duplicateSel), rm));
     }
@@ -198,10 +292,11 @@ function renderSel() {
 }
 function ui() {
   $('run').textContent = running ? t('btn.pause') : t('btn.run'); press($('run'), !running);
-  renderMotors(); fillDl($('io'), ioRows()); renderLayers(); renderSel();
+  renderMotors(); fillDl($('io'), ioRows()); renderLayers(); renderSel(); renderWarns(); renderWhy();
   const moving = parts.filter(p => !isShaft(p) && isDriven(p)).length, total = parts.filter(p => !isShaft(p)).length;
-  $('status').className = 'status' + (linkDraft ? '' : lockMsg ? ' locked' : !running ? ' paused' : '');
-  $('status-text').textContent = linkDraft ? t('status.link') : !total ? t('status.empty') : lockMsg ? lockMsg : hintMsg ? hintMsg : !running ? t('status.paused') : t('status.running', { n: moving, m: total });
+  const err = (warnings.find(w => w.level === 'error') || {}).text;
+  $('status').className = 'status' + (linkDraft ? '' : lockMsg || err ? ' locked' : !running ? ' paused' : '');
+  $('status-text').textContent = linkDraft ? t('status.link') : !total ? t('status.empty') : lockMsg ? lockMsg : err ? err : hintMsg ? hintMsg : !running ? t('status.paused') : t('status.running', { n: moving, m: total });
   const nt = TYPES[$('new-type').value], nz = $('new-z'); $('new-size-row').hidden = !nt.key;
   if (nt.key) { nz.min = nt.lim[0]; nz.max = nt.lim[1]; nz.step = nt.lim[2]; const nn = $('new-z-num'); nn.min = nz.min; nn.max = nz.max; nn.step = nz.step; if (document.activeElement !== nn) nn.value = nz.value; $('new-z-lab').textContent = t('size.' + $('new-type').value); }
   $('new-layer').textContent = t('add.onLayer', { l: LET(activeLayer) });
@@ -215,6 +310,10 @@ function ui() {
     for (const s of [p.name, sizeText(p), isShaft(p) ? '' : LET(p.layer), isShaft(p) ? (p.w ? `${p.w > 0 ? '+' : '−'}${fmt(Math.abs(p.w))}` : '') : speedText(p, false)]) b.append(el('span', s));
     tr.append(b);
   }
+}
+function renderWarns() {
+  const sec = $('warn-sec'), box = $('warns'); sec.hidden = !warnings.length; box.textContent = '';
+  for (const w of warnings) { const b = el('button', w.text, { onclick: () => { if (w.ids.length) pick(w.ids); } }); b.className = 'w-' + w.level; box.append(b); }
 }
 function applyLang() {
   document.documentElement.lang = lang;
@@ -242,7 +341,7 @@ function removeSel() { removeParts([...sel]); commit(); }
 function duplicateSel() {
   const ps = selParts(); if (!ps.length) return;
   freeze(); const map = new Map(), made = [];
-  for (const p of ps) { const o = serialize().parts.find(q => q.id === p.id), id = nextId++; map.set(p.id, id); made.push(make({ ...o, id, name: T(p).pre + id, x: p.x + 24, y: p.y + 24, motor: null })); }
+  for (const p of ps) { const o = serialize().parts.find(q => q.id === p.id), id = nextId++; map.set(p.id, id); made.push(make({ ...o, id, name: T(p).pre + id, x: p.x + 24, y: p.y + 24, motor: p.type === 'emotor' ? o.motor : null })); }
   for (const q of made) { if (q.mount) { if (map.has(q.mount.c)) q.mount.c = map.get(q.mount.c); else delete q.mount; } parts.push(q); }
   for (const L of links.slice()) if (L.ids.every(id => map.has(id))) addLink(L.kind, L.ids.map(id => map.get(id)), L.crossed);
   sel = new Set(made.map(q => q.id)); commit();
@@ -420,7 +519,7 @@ $('add').onclick = () => {
   const type = $('new-type').value, nt = TYPES[type];
   const g = addPart(type, { ...(nt.key ? { [nt.key]: +$('new-z').value } : {}), x: 0, y: 0, layer: activeLayer, ...(type === 'shaft' ? { l0: activeLayer, l1: Math.min(layerCount - 1, activeLayer + 1) } : {}) });
   Object.assign(g, freeSpot(tipR(g) + reach(g)));
-  if (!parts.some(p => p.motor) && !isLin(g) && !ty(g, 'carrier', 'brake')) g.motor = { rpm: 60, tq: 2 };   // the first part on an empty bench gets the motor
+  if (!parts.some(p => p.motor) && !isLin(g) && !ty(g, 'carrier', 'brake', 'machine')) g.motor = { kind: 'speed', rpm: 60, tq: 2 };   // the first part on an empty bench gets the motor
   sel = new Set([g.id]); commit();
 };
 $('tpl-add').onclick = () => { const c = toWorld(W / 2, topMid()); freeze(); const made = insertTemplate($('tpl').value, c.x, c.y); sel = new Set(made.map(p => p.id)); commit(); fit(); };
@@ -430,6 +529,7 @@ $('dims').onclick = () => { showDims = !showDims; ui(); save(); };
 $('example').onclick = () => { example(); solve(); fit(); ui(); save(); };
 $('clear').onclick = () => { const n = layerCount; resetScene(n); commit(); };
 $('fit').onclick = fit;
+$('why-x').onclick = () => { why = null; renderWhy(); };
 $('zoom-in').onclick = () => zoomAt(W / 2, topMid(), 1.3);
 $('zoom-out').onclick = () => zoomAt(W / 2, topMid(), 1 / 1.3);
 for (const m of ['both', 'top', 'side']) $('vm-' + m).onclick = () => { viewMode = m; fit(); ui(); };
@@ -465,7 +565,7 @@ function start(d) {
   requestAnimationFrame(frame);
 }
 // small hook for automated checks
-window.__bench = { state: () => ({ lock: lockMsg, hint: hintMsg, io: ioRows(), parts: parts.map(p => ({ name: p.name, w: +outOf(p).w.toFixed(4), und: p.und })) }), parts: () => parts, solve, pick };
+window.__bench = { state: () => ({ lock: lockMsg, hint: hintMsg, io: ioRows(), warnings: warnings.map(w => [w.level, w.code]), parts: parts.map(p => ({ name: p.name, w: +outOf(p).w.toFixed(4), und: p.und })) }), parts: () => parts, solve, pick };
 const hot = window.claude && window.claude.hot;
 if (hot && hot.snapshot) hot.snapshot(() => serialize());
 if (hot && hot.ready) hot.ready(start); else start(hot && hot.data ? hot.data : null);

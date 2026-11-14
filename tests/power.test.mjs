@@ -105,3 +105,25 @@ test('undercut note for spur gears under 17 teeth (z_min = 2/sin²20° = 17.1)',
   const r = bench().run(() => { resetScene(1); addPart('spur', { x: 0, y: 0, z: 16 }); addPart('spur', { x: 200, y: 0, z: 17 }); solve(); return warnings.map(w => [w.code, w.ids]); });
   assert.deepEqual(r, [['w.undercut', [1]]]);
 });
+
+test('demo: motor → belt → planetary → chain → conveyor; total ratio and torque at the motor', () => {
+  // i = (60/24)·(1 + 42/12)·(24/12) = 2.5·4.5·2 = 22.5
+  // η = 0.96 (belt) · 0.98 (sun–planet; the ring mesh lies off the power path the bench walks) · 0.95 (chain)
+  const r = bench().run(() => {
+    resetScene(5); const m = insertTemplate('conveyor', 0, 0); solve();
+    const a = m[0], x = m[m.length - 1];
+    return { lock: lockMsg, i: a.w / x.w, M: power.src.get(a.id).M, n: a.w, L: power.load.get(x.id), warn: warnings.filter(w => w.level !== 'info').map(w => w.code) };
+  });
+  assert.equal(r.lock, '');
+  close(Math.abs(r.i), 22.5, 1e-9);
+  close(r.L.etaPath, 0.96 * 0.98 * 0.95, 1e-9);
+  close(r.M, 45 / (22.5 * 0.96 * 0.98 * 0.95), 1e-9);
+  assert.ok(r.n > 1320 && r.n < 1500);            // 2.24 N·m asked of a 2.68 N·m motor
+  assert.deepEqual(r.warn, []);
+});
+
+test('demo: motor and fan settle on the fan curve', () => {
+  const r = bench().run(() => { resetScene(2); const m = insertTemplate('fan', 0, 0); solve(); return { n: m[0].w, M: power.src.get(m[0].id).M, Mnom: power.src.get(m[0].id).Mnom }; });
+  close(r.M, 2.4 * (r.n / 1320) ** 2, 1e-9);     // on the fan law
+  assert.ok(r.M < r.Mnom * 1.05 && r.n > 1300 && r.n < 1500);
+});

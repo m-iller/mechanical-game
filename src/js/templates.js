@@ -40,6 +40,22 @@ const TEMPLATES = {
     return [addPart('flywheel', { x, y, layer: L, d: 60, motor: { rpm: 120, tq: 2 } }), addPart('shaft', { x, y, l0: L, l1: L + 1 }), addPart('clutch', { x, y, layer: L + 1, d: 40 }),
       addPart('shaft', { x, y, l0: L + 1, l1: L + 2 }), addPart('spur', { x, y, layer: L + 2, z: 20 })];
   } },
+  // induction motor and a fan on one shaft: the speed settles where the two characteristics cross
+  fan: { layers: 2, build(x, y, L) {
+    return [addPart('emotor', { x, y, layer: L }), addPart('shaft', { x, y, l0: L, l1: L + 1 }), addPart('machine', { x, y, layer: L + 1, label: t('name.fan'), load: { kind: 'quad', tq: 2.4, n: 1320, eta: 0.6 } })];
+  } },
+  // electric motor → belt → planetary reducer (ring held) → chain → conveyor as a black-box machine
+  conveyor: { layers: 5, build(x, y, L) {
+    const X = x + 90, out = [addPart('emotor', { x, y, layer: L }), addPart('shaft', { x, y, l0: L, l1: L + 1 })];
+    const p1 = addPart('pulley', { x, y, layer: L + 1, d: 24 }), p2 = addPart('pulley', { x: X, y, layer: L + 1, d: 60 }); addLink('belt', [p1.id, p2.id]);
+    out.push(p1, p2, addPart('shaft', { x: X, y, l0: L + 1, l1: L + 2 }), addPart('spur', { x: X, y, layer: L + 2, z: 12 }), addPart('ring', { x: X, y, layer: L + 2, z: 42, held: true }));
+    const c = addPart('carrier', { x: X, y, layer: L + 3, r: 27, n: 3 }); out.push(c);
+    for (let k = 0; k < 3; k++) out.push(addPart('spur', { x: X, y, layer: L + 2, z: 15, mount: { c: c.id, k } }));
+    const s1 = addPart('sprocket', { x: X, y, layer: L + 4, z: 12 }), s2 = addPart('sprocket', { x: X + 100, y, layer: L + 4, z: 24 }); addLink('chain', [s1.id, s2.id]);
+    out.push(addPart('shaft', { x: X, y, l0: L + 3, l1: L + 4 }), s1, s2, addPart('shaft', { x: X + 100, y, l0: L + 3, l1: L + 4 }),
+      addPart('machine', { x: X + 100, y, layer: L + 3, d: 56, label: t('name.conveyor'), load: { kind: 'const', tq: 45, n: 60, eta: 0.85 } }));
+    return out;
+  } },
   piston: { layers: 1, build(x, y, L) { return [addPart('crank', { x, y, layer: L, r: 14, l: 40, dir: 0, motor: { rpm: 60, tq: 2 } })]; } },
   geneva: { layers: 1, build(x, y, L) { return [addPart('geneva', { x, y, layer: L, z: 4, dir: 0, motor: { rpm: 30, tq: 2 } })]; } },
 };

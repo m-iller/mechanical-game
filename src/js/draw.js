@@ -161,6 +161,19 @@ function drawTop(dpr, s, bh) {
       case 'fric': { const fp = discPath(g.d / 2, 4, 0); gearAt(g.x, g.y, an, fp.fill, main, ink, lw, sh); ctx.strokeStyle = ink; ctx.lineWidth = 2.2; ctx.globalAlpha = 0.45; ctx.beginPath(); ctx.arc(g.x, g.y, g.d / 2 - 1.1, 0, TAU); ctx.stroke(); ctx.globalAlpha = 1; break; }
       case 'sprocket': gearAt(g.x, g.y, an, sprocketPath(g.z), main, ink, lw, sh); break;
       case 'flywheel': gearAt(g.x, g.y, an, flywheelPath(g.d), main, ink, lw, sh); break;
+      case 'emotor': { // stator with the motor letter, rotor turning inside
+        const r = g.d / 2;
+        ctx.save(); shadow(sh); ctx.fillStyle = C.brass; ctx.beginPath(); ctx.arc(g.x, g.y, r, 0, TAU); ctx.fill(); shadow(false); ctx.strokeStyle = ink; ctx.lineWidth = lw; ctx.stroke(); ctx.restore();
+        gearAt(g.x, g.y, an, discPath(Math.round(r * 0.55)).fill, fill, ink, lw, false);
+        ctx.fillStyle = ink; ctx.font = `600 ${r * 0.36}px ${C.mono}`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('M', g.x, g.y - r * 0.77);
+        break;
+      }
+      case 'machine': { // a plain box: whatever machine takes the power
+        const r = g.d / 2;
+        ctx.save(); shadow(sh); ctx.fillStyle = fill; ctx.fillRect(g.x - r, g.y - r, 2 * r, 2 * r); shadow(false); ctx.strokeStyle = ink; ctx.lineWidth = lw; ctx.strokeRect(g.x - r, g.y - r, 2 * r, 2 * r); ctx.restore();
+        gearAt(g.x, g.y, an, discPath(Math.round(r * 0.4)).fill, fill, ink, lw, false);
+        break;
+      }
       case 'carrier': { // hub, arms and pins; gears dropped on a pin ride with it
         ctx.save(); ctx.lineCap = 'round'; shadow(sh);
         for (const pass of [[9, ink], [9 - 2 * lw, main]]) { ctx.strokeStyle = pass[1]; ctx.lineWidth = pass[0]; ctx.beginPath(); for (let k = 0; k < g.n; k++) { const q = pinPos(g, k); ctx.moveTo(g.x, g.y); ctx.lineTo(q.x, q.y); } ctx.stroke(); shadow(false); }
@@ -280,7 +293,7 @@ function drawTop(dpr, s, bh) {
     if (!shown(g) || (isShaft(g) && !sel.has(g.id) && !g.motor) || g.mount) continue;
     const b = boxOf(g), off = (b ? b[1] : tipR(g)) * s + 13, n = b ? [-Math.sin(g.dir), Math.cos(g.dir)] : [0, 1];
     const up = b ? -1 : g.layer ? -1 : 1, sx = X(g.x) + n[0] * up * off, sy = Y(g.y) + n[1] * up * off + (b || !g.layer ? 0 : 8 - (g.layer - 1) * 14);
-    const str = [g.name, sizeText(g), showDims && diaText(g), speedText(g, true), g === out ? 'OUT' : g.motor ? 'M' : ''].filter(Boolean).join('  ');
+    const str = [g.label ? `${g.name} ${g.label}` : g.name, sizeText(g), showDims && diaText(g), speedText(g, true), g === out ? 'OUT' : g.motor ? 'M' : ''].filter(Boolean).join('  ');
     ctx.globalAlpha = onActive(g) ? 1 : 0.45;
     text(str, sx, sy, collide.has(g.id) ? C.jam : g.motor ? C.brass : g === out ? C.select : C.ink);
   }
@@ -367,6 +380,8 @@ function drawSide(dpr, s, bh) {
         break;
       }
       case 'rack': rect(g.x, halfW(g), zb + 1, zb + FW - 1, fill, ink); break;
+      case 'emotor': rect(g.x, g.d / 2, zb, zb + FW, C.brass, ink); break;
+      case 'machine': rect(g.x, g.d / 2, zb, zb + FW, fill, ink); break;
       case 'pulley': case 'fric': {
         const r = g.d / 2, e = g.type === 'pulley' ? 1.5 : 0;
         rect(g.x, r + e, zb, zb + FW, main, ink); teeth(g.x, r, 6, an, zb + 1.5, zb + FW - 1.5, ink);

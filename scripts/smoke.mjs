@@ -42,6 +42,16 @@ await page.evaluate(() => { lockedLayers.add(1); pick([]); });
 await page.mouse.click(centre.x - 12 * (await page.evaluate(() => view.scale)), centre.y);
 if (await page.evaluate(() => sel.size)) fail('a locked layer let a part be picked');
 
+// power balance: the conveyor demo runs, shows explained figures, and the "where from" box opens
+await page.evaluate(() => { resetScene(5); const m = insertTemplate('conveyor', 0, 0); solve(); fit(); pick([m[m.length - 1].id]); });
+await page.waitForTimeout(60);
+s = await state(); if (s.lock || s.warnings.some(w => w[0] !== 'info')) fail('conveyor demo: ' + s.lock + JSON.stringify(s.warnings));
+if (await page.locator('dd.ex').count() < 6) fail('no explained figures in the panel');
+await page.locator('.motor dd.ex').nth(1).click();
+if (!/M = Σ/.test(await page.locator('#why-b').innerText())) fail('the "where from" box did not open');
+await page.evaluate(() => { parts.find(p => p.type === 'machine').load.tq = 500; solve(); ui(); });
+s = await state(); if (!s.warnings.some(w => w[1] === 'w.stall')) fail('an overloaded motor did not stall');
+
 const extra = process.env.SMOKE_EXTRA;   // optional module with more checks: export default async (page, fail) => {}
 if (extra) await (await import(new URL(extra, 'file://' + process.cwd() + '/').href)).default(page, fail);
 await page.evaluate(() => { example(); solve(); fit(); ui(); });

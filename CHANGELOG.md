@@ -23,6 +23,7 @@ Gear Bench is growing from a drive sandbox into a rough-figures tool for mechani
 - **Cams**: a cam and a roller follower as links with a higher pair. Motion laws (cycloidal, harmonic, constant acceleration, constant speed), surface profile, pressure angle, base radius for α ≤ 30°, curvature check, follower graphs. Template "Cam drive of a valve".
 - **Structure of mechanisms**: redundant constraints by Malyshev's formula and the split into Assur groups.
 - **Planetary tooth numbers**: coaxial, neighbour and assembly conditions for the stage around a carrier, the profile shift needed below 17 teeth, and a picker that offers tooth numbers for a wanted ratio.
+- Core for pipes and hydraulics (not yet in the interface): fluid properties, friction and local losses for laminar and turbulent flow, recommended speeds, and a steady-state network solver with pump, pipe, throttle, relief and check valves, cylinder with end stops and hydraulic motor.
 
 ### Changed
 - Scenes are saved in format v3. Scenes from 2.x open and are migrated on load.

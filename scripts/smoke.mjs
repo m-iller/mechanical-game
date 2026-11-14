@@ -108,7 +108,19 @@ const portXY = (type, k) => page.evaluate(([type, k]) => { const g = parts.filte
 const pa = await portXY('hrelief', 1), pb = await portXY('htank', 0);
 await page.mouse.click(pa.x, pa.y); await page.mouse.click(pa.x, pb.y - 30); await page.mouse.click(pb.x, pb.y); await page.waitForTimeout(100);
 hs = await page.evaluate(() => ({ n: pipes.length, last: pipes[pipes.length - 1], draft: pipeDraft, ok: hyd.ok }));
-if (hs.n !== 7 || hs.draft || hs.last.pts.length !== 1 || hs.last.kind !== 'return' || !hs.ok) fail('laying a pipe by clicks: ' + JSON.stringify(hs));
+if (hs.n !== 7 || hs.draft || hs.last.pts.length !== 2 || hs.last.kind !== 'return' || !hs.ok) fail('laying a pipe by clicks: ' + JSON.stringify(hs));
+// the same pipe again, started by a click on the free port itself; the bend follows the pointer, / flips it, Backspace takes a point back
+await page.evaluate(() => { pipes.pop(); solve(); ui(); });
+await page.mouse.click(pa.x, pa.y); await page.mouse.move(pa.x + 60, pa.y + 25);
+let rt = await page.evaluate(() => { const d = pipeDraft, L = pipeLast(d); return d && d.cur ? [d.a != null, pipeElbow(L, d.cur, '45', 0), pipeElbow(L, d.cur, '45', 1)] : null; });
+if (!rt || !rt[0] || !rt[1] || !rt[2] || Math.abs(rt[1].y - rt[2].y) < 1) fail('routing preview: ' + JSON.stringify(rt));
+if (process.env.SHOT_RT) await page.screenshot({ path: process.env.SHOT_RT });
+await page.keyboard.press('/'); await page.mouse.click(pa.x + 60, pa.y + 25);
+rt = await page.evaluate(() => [pipeDraft.flip, pipeDraft.pts.length]); if (rt[0] !== 1 || rt[1] !== 2) fail('flip and fix: ' + rt);
+await page.keyboard.press('Backspace'); rt = await page.evaluate(() => pipeDraft.pts.length); if (rt !== 1) fail('Backspace while routing: ' + rt);
+await page.keyboard.press('Shift+Space'); rt = await page.evaluate(() => layout.route); if (rt !== '90') fail('Shift+Space while routing: ' + rt);
+await page.evaluate(() => setRoute('45')); await page.mouse.click(pb.x, pb.y); await page.waitForTimeout(100);
+hs = await page.evaluate(() => ({ n: pipes.length, draft: pipeDraft, ok: hyd.ok })); if (hs.n !== 7 || hs.draft || !hs.ok) fail('pipe started from a port: ' + JSON.stringify(hs));
 // a corner of a laid pipe can be dragged; dragging a straight run makes a corner; a corner put back in line goes away
 await page.evaluate(() => { resetScene(1); const a = addPart('htank', { x: 0, y: 0 }), b = addPart('htank', { x: 100, y: 0 }); addPipe(a, 0, b, 0, {}); solve(); viewMode = 'top'; fit(); setActive(0); });
 const mid = await topPos(50, 0), up40 = await topPos(50, -40), back = await topPos(50, 0.4);

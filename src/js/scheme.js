@@ -225,8 +225,13 @@ function pipesDraw(layer, s) {
     ctx.restore();
   }
   if (pipeDraft && pipeDraft.a != null && byId(pipeDraft.a).layer === layer) { // the pipe being laid
-    const a = portPos(byId(pipeDraft.a), pipeDraft.pa), P = [a, ...pipeDraft.pts.map(v => ({ x: v[0], y: v[1] })), ...(pipeDraft.cur ? [pipeDraft.cur] : [])];
-    ctx.save(); ctx.strokeStyle = C.select; ctx.lineWidth = 2 / s; ctx.setLineDash([5 / s, 3 / s]); ctx.beginPath(); P.forEach((v, i) => i ? ctx.lineTo(v.x, v.y) : ctx.moveTo(v.x, v.y)); ctx.stroke(); ctx.restore();
+    const d = pipeDraft, a = portPos(byId(d.a), d.pa), P = [a, ...d.pts.map(v => ({ x: v[0], y: v[1] }))], last = P[P.length - 1], cur = d.cur, e = cur && pipeElbow(last, cur, layout.route || '45', d.flip);
+    const line = Q => { ctx.beginPath(); Q.forEach((v, i) => i ? ctx.lineTo(v.x, v.y) : ctx.moveTo(v.x, v.y)); ctx.stroke(); };
+    ctx.save(); ctx.strokeStyle = C.select; ctx.lineJoin = 'round'; ctx.lineWidth = 2.4 / s; line(P);                       // what is already fixed
+    if (cur) { ctx.lineWidth = 2 / s; ctx.setLineDash([5 / s, 3 / s]); line([last, ...(e ? [e] : []), cur]); ctx.setLineDash([]);   // what the next click will fix
+      if (cur.port) { ctx.lineWidth = 1.6 / s; ctx.beginPath(); ctx.arc(cur.x, cur.y, 4.5 / s + 1.5, 0, TAU); ctx.stroke(); } }
+    ctx.fillStyle = C.select; for (const v of P.slice(1)) { ctx.beginPath(); ctx.arc(v.x, v.y, 2.2 / s, 0, TAU); ctx.fill(); }
+    ctx.restore();
   }
 }
 // pipes in the side view: from port to port across the layers

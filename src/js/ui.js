@@ -292,11 +292,11 @@ function renderLayers() {
 }
 function renderSel() {
   const ps = selParts(), p = ps.length === 1 ? ps[0] : null, body = $('sel-body');
-  const key = JSON.stringify([sceneGen, selPipe, pipeDraft && [pipeDraft.a, 1], pipes.map(q => [q.id, q.kind, q.fluid, q.mat, q.pts.length]), lang, layerCount, linkDraft && [linkDraft.kind, linkDraft.ids], outId, links.map(L => [L.ids, L.crossed]), ps.map(q => [q.id, q.type, q.layer, q.on, q.held, q.loose, !!q.motor, q.load && q.load.kind, q.mount && q.mount.c, q.l0, q.l1, q.law, q.pos, q.st, q.ekind, q.grav, q.ft]), pairs.map(q => [q.id, q.type])]);
+  const key = JSON.stringify([sceneGen, selPipe, pipeDraft && [pipeDraft.a, 1, layout.route], pipes.map(q => [q.id, q.kind, q.fluid, q.mat, q.pts.length]), lang, layerCount, linkDraft && [linkDraft.kind, linkDraft.ids], outId, links.map(L => [L.ids, L.crossed]), ps.map(q => [q.id, q.type, q.layer, q.on, q.held, q.loose, !!q.motor, q.load && q.load.kind, q.mount && q.mount.c, q.l0, q.l1, q.law, q.pos, q.st, q.ekind, q.grav, q.ft]), pairs.map(q => [q.id, q.type])]);
   $('sel-name').textContent = p ? `${p.name} · ${typeName(p)}` : ps.length ? t('sel.many', { n: ps.length }) : t('sel.none');
   if (key !== selKey) {
     selKey = key; selRefresh = []; graphTick = null; body.textContent = '';
-    if (pipeDraft) body.append(el('p', t(pipeDraft.a == null ? 'hy.pickFirst' : 'hy.pickNext'), { className: 'hint' }), rowOf(btn(t('btn.cancel'), () => { pipeDraft = null; ui(); })));
+    if (pipeDraft) body.append(el('p', t(pipeDraft.a == null ? 'hy.pickFirst' : 'hy.pickNext'), { className: 'hint' }), labelled(t('hy.route'), choice(ROUTE_MODES.map(m => [m, t('route.' + m)]), layout.route || '45', setRoute)), rowOf(btn(t('hy.flip'), () => { pipeDraft.flip = pipeDraft.flip ? 0 : 1; }), btn(t('btn.cancel'), () => { pipeDraft = null; ui(); })));
     else if (selPipe != null && pipes.some(q => q.id === selPipe)) pipePanel(pipes.find(q => q.id === selPipe), body);
     else if (linkDraft) {
       body.append(el('p', t('link.pick', { kind: t('type.' + (linkDraft.kind === 'belt' ? 'pulley' : 'sprocket')), list: nameOf(linkDraft.ids) }), { className: 'hint' }),
@@ -586,7 +586,7 @@ function hydFields(p) {
   if (p.type === 'hcyl') out.push(slider(t('hy.rod'), 4, 300, 1, () => rodD(p), v => { p.dr = Math.min(v, p.d - 2); commit(); }, unitSym('mm')), slider(t('hy.s'), 0, p.st, 0.5, () => +(p.s || 0).toFixed(1), v => { p.s = v; delete p.jam; commit(); }, unitSym('mm')),
     num('hy.F', 'F', -1e6, 1e6, 10, unitSym('N')), num('hy.Fb', 'Fb', 0, 1e6, 10, unitSym('N')), rowOf(btn(t('hy.grav'), () => { p.grav = !p.grav; if (!p.grav) delete p.grav; commit(); }, !!p.grav)));
   if (p.type === 'hmotor') out.push(num('hy.M', 'M', 0, 1e5, 0.1, unitSym('Nm')));
-  if (p.type !== 'hnode' || true) out.push(rowOf(btn(t('hy.lay'), () => { pipeDraft = { a: null, pts: [], cur: null }; sel = new Set(); ui(); })));
+  if (p.type !== 'hnode' || true) out.push(rowOf(btn(t('hy.lay'), () => { pipeStart(null); })));
   return out;
 }
 /* A click in the side view while a pipe is being laid, as a point of the bench: the port nearest in x on the layer under the pointer,
@@ -603,12 +603,24 @@ function sidePoint(p) {
 function pipeClick(w) {
   const r = Math.max(3.5, 10 / view.scale), port = portAt(w, r), d = pipeDraft;
   if (d.a == null) { if (port) { d.a = port.p.id; d.pa = port.k; ui(); } return; }
-  const a = byId(d.a), done = (b, pb) => { const fromTank = a.type === 'htank' || b.type === 'htank', dm = portDomain(a) || {}, thm = dm.domain === 'th'; addPipe(a, d.pa, b, pb, { pts: d.pts, d: thm ? 60 : 10, fluid: dm.domain === 'el' ? 'el' : thm ? (typeof gasOf === 'function' ? gasOf(a, d.pa) : 'air') : 'oil', kind: fromTank ? 'return' : 'pressure', mat: a.type === 'hcyl' || b.type === 'hcyl' ? 'hose' : 'steel' }); pipeDraft = null; commit(); };
+  const via = to => { const e = pipeElbow(pipeLast(d), to, layout.route || '45', d.flip); return e ? [...d.pts, [e.x, e.y]] : d.pts; };
+  const a = byId(d.a), done = (b, pb, at) => { const fromTank = a.type === 'htank' || b.type === 'htank', dm = portDomain(a) || {}, thm = dm.domain === 'th'; addPipe(a, d.pa, b, pb, { pts: via(at || portPos(b, pb)), d: thm ? 60 : 10, fluid: dm.domain === 'el' ? 'el' : thm ? (typeof gasOf === 'function' ? gasOf(a, d.pa) : 'air') : 'oil', kind: fromTank ? 'return' : 'pressure', mat: a.type === 'hcyl' || b.type === 'hcyl' ? 'hose' : 'steel' }); pipeDraft = null; commit(); };
   if (port && !(port.p.id === d.a && port.k === d.pa)) return done(port.p, port.k);
-  const hitP = pipeAt(w, r * 0.6); if (hitP) return done(pipeTee(hitP, a.layer), 0);
-  const last = d.pts.length ? { x: d.pts[d.pts.length - 1][0], y: d.pts[d.pts.length - 1][1] } : portPos(a, d.pa), sn = 5 / view.scale;   // keep runs square when the click is close to it
-  d.pts.push([Math.abs(w.x - last.x) < sn ? last.x : w.x, Math.abs(w.y - last.y) < sn ? last.y : w.y]);
+  const hitP = pipeAt(w, r * 0.6); if (hitP) { const at = { x: hitP.x, y: hitP.y }; return done(pipeTee(hitP, a.layer), 0, at); }
+  const c = pipeAim(w), e = pipeElbow(pipeLast(d), c, layout.route || '45', d.flip);
+  if (e) d.pts.push([e.x, e.y]); d.pts.push([c.x, c.y]);
 }
+// where the next point of the pipe being laid would go for a pointer at w: a port, a point of another pipe, or a spot on the 1 mm grid kept square to the last point
+function pipeAim(w) {
+  const d = pipeDraft, r = Math.max(3.5, 10 / view.scale), port = portAt(w, r);
+  if (port && !(port.p.id === d.a && port.k === d.pa)) return { ...portPos(port.p, port.k), port: true };
+  if (d.a == null) return { x: w.x, y: w.y };
+  const hp = pipeAt(w, r * 0.6); if (hp) return { x: hp.x, y: hp.y, port: true };
+  const last = pipeLast(d), sn = 5 / view.scale, x = Math.round(w.x), y = Math.round(w.y);
+  return { x: Math.abs(w.x - last.x) < sn ? last.x : x, y: Math.abs(w.y - last.y) < sn ? last.y : y };
+}
+function pipeStart(port) { pipeDraft = { a: port ? port.p.id : null, pa: port ? port.k : 0, pts: [], cur: null, flip: 0 }; sel = new Set(); selPipe = null; ui(); }
+function setRoute(m) { layout.route = m; saveLayout(); ui(); }
 
 /* ---------- sources and consumers in the panel ---------- */
 function ioPartRows(p) {
@@ -652,7 +664,7 @@ function ioFields(p) {
   else if (p.type === 'hoist' || p.type === 'weight') out.push(num('link.m', 'm', 0, 100000, 0.5, unitSym('kg')));
   else if (p.type === 'conveyor') out.push(num('cv.F', 'F', 0, 1e6, 10, unitSym('N')), num('cv.len', 'len', 40, 5000, 10, unitSym('mm')));
   else if (p.type === 'spring') out.push(num('hy.M', 'M', 0.01, 10000, 0.01, unitSym('Nm')));
-  if (portsOf(p).length) out.push(rowOf(btn(t('el.lay'), () => { pipeDraft = { a: null, pts: [], cur: null }; sel = new Set(); ui(); })));
+  if (portsOf(p).length) out.push(rowOf(btn(t('el.lay'), () => { pipeStart(null); })));
   return out;
 }
 // indicator diagram p–V and the engine's torque over the 720° of its cycle
@@ -709,7 +721,7 @@ function thFields(p) {
     out.push(num('th.etaT', 'etaT', 0.5, 1, 0.01, '', 0.88), num('th.z', 'zst', 1, 30, 1, '', 1), num('th.a1', 'a1', 8, 40, 0.5, '°', 16), num('th.rho', 'rho', 0, 0.7, 0.05, '', 0), num('motor.limit', 'nmax', 100, 60000, 50, t('u.rpm'), 12000));
     const gc = el('canvas', null, { className: 'graphs' }); out.push(gc); selRefresh.push(() => drawTriangles(gc, p));
   }
-  out.push(rowOf(btn(t('hy.lay'), () => { pipeDraft = { a: null, pts: [], cur: null }; sel = new Set(); ui(); })));
+  out.push(rowOf(btn(t('hy.lay'), () => { pipeStart(null); })));
   return out;
 }
 // speed triangles of the stage: inlet (c₁, w₁) above the line of rotation, outlet (c₂, w₂) drawn from the same point
@@ -765,6 +777,10 @@ cv.addEventListener('pointerdown', e => {
   if (pipeDraft) { pipeClick(side ? sidePoint(p) : toWorld(p.x, p.y)); return; }
   const mk = !linkDraft && !side && markerAt(p);
   if (mk) { infoToggle(mk.key, mk); return; }
+  if (!linkDraft && !side && !e.shiftKey) { // a click on a free port starts a pipe from it
+    const port = portAt(toWorld(p.x, p.y), Math.max(2, 5 / view.scale));
+    if (port && canPick(port.p) && !portTaken(port.p.id, port.k)) { pipeStart(port); return; }
+  }
   const g = hit(p);
   if (linkDraft) { // building a belt or chain: clicks add and remove wheels
     if (g && g.type === (linkDraft.kind === 'belt' ? 'pulley' : 'sprocket') && g.layer === byId(linkDraft.ids[0]).layer) { const i = linkDraft.ids.indexOf(g.id); if (i < 0) linkDraft.ids.push(g.id); else if (linkDraft.ids.length > 1) linkDraft.ids.splice(i, 1); ui(); }
@@ -808,14 +824,13 @@ cv.addEventListener('pointerdown', e => {
     if (e.shiftKey && !g) startBox(); else if (!g) holdTimer = setTimeout(startBox, 380);   // hold still, then drag, to select an area
   }
 });
-cv.addEventListener('pointermove', e => { mouse = pos(e); cv.classList.toggle('splitting', splitDrag || (!pts.size && nearSplit(mouse))); });
+cv.addEventListener('pointermove', e => { mouse = pos(e); if (pipeDraft) pipeDraft.cur = mouse.y < bandH() ? null : pipeAim(toWorld(mouse.x, mouse.y)); cv.classList.toggle('splitting', splitDrag || (!pts.size && nearSplit(mouse))); });
 cv.addEventListener('dblclick', e => { if (nearSplit(pos(e))) { layout.sideFrac = null; saveLayout(); } });
 cv.addEventListener('pointerleave', () => { mouse = null; });
 cv.addEventListener('pointermove', e => {
   if (!pts.has(e.pointerId)) return;
   const p = pos(e); pts.set(e.pointerId, p);
   if (splitDrag) { layout.sideFrac = Math.max(0.05, Math.min(0.9, p.y / H)); return; }
-  if (pipeDraft) pipeDraft.cur = p.y < bandH() ? null : toWorld(p.x, p.y);
   if (pinch && pts.size === 2) {
     const [a, b] = [...pts.values()], mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
     view.scale = Math.max(0.5, Math.min(12, pinch.scale * Math.hypot(a.x - b.x, a.y - b.y) / pinch.d));
@@ -924,6 +939,12 @@ $('zoom-out').onclick = () => zoomAt(W / 2, topMid(), 1 / 1.3);
 for (const m of ['both', 'top', 'side']) $('vm-' + m).onclick = () => { viewMode = m; fit(); ui(); };
 addEventListener('keydown', e => {
   const typing = /INPUT|SELECT|TEXTAREA/.test(document.activeElement.tagName) && document.activeElement.type !== 'range';
+  if (pipeDraft && !/INPUT|SELECT|TEXTAREA/.test(document.activeElement.tagName)) { // while a pipe is being laid: / flips the bend, Shift+Space changes the angles, Backspace takes back a point
+    const d = pipeDraft;
+    if (e.key === '/' || e.code === 'Slash') { e.preventDefault(); d.flip = d.flip ? 0 : 1; return; }
+    if (e.key === ' ' && e.shiftKey) { e.preventDefault(); setRoute(ROUTE_MODES[(ROUTE_MODES.indexOf(layout.route || '45') + 1) % ROUTE_MODES.length]); return; }
+    if (e.key === 'Backspace') { e.preventDefault(); if (d.pts.length) d.pts.pop(); else if (d.a != null) { d.a = null; ui(); } else { pipeDraft = null; ui(); } return; }
+  }
   if (e.key === 'Escape') { if (pipeDraft) pipeDraft = null; else if (linkDraft) linkDraft = null; else { sel = new Set(); selPipe = null; } ui(); return; }
   if ((e.key === 'Delete' || e.key === 'Backspace') && selPipe != null && !sel.size) { e.preventDefault(); pipes = pipes.filter(q => q.id !== selPipe); selPipe = null; commit(); return; }
   if (typing) return;
@@ -937,6 +958,7 @@ addEventListener('keydown', e => {
   else if (e.key === ' ') { e.preventDefault(); running = !running; ui(); }
   else if ((e.key === 'Delete' || e.key === 'Backspace') && sel.size) { e.preventDefault(); removeSel(); }
   else if (!mod2 && e.code === 'KeyR') rotateSel(e.shiftKey ? -15 : 15);
+  else if (!mod2 && e.code === 'KeyX' && !pipeDraft) { const port = mouse && mouse.y >= bandH() ? portAt(toWorld(mouse.x, mouse.y), Math.max(3.5, 10 / view.scale)) : null; pipeStart(port && !portTaken(port.p.id, port.k) ? port : null); }
   else if ((e.ctrlKey || e.metaKey) && (e.key.toLowerCase() === 'a' || e.key.toLowerCase() === 'ф')) { e.preventDefault(); pick(parts.filter(canPick).map(p => p.id)); }
   else if ((e.ctrlKey || e.metaKey) && (e.key.toLowerCase() === 'd' || e.key.toLowerCase() === 'в')) { e.preventDefault(); duplicateSel(); }
 });

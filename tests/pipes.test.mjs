@@ -92,3 +92,14 @@ test('hydraulic motor: Δp = M/q, speed = Q/q', () => {
   const r = hy().run((q, Q) => hydroSolve({ nodes: 2, fixed: { 0: 0 }, elems: [{ k: 'pump', a: 0, b: 1, Q }, { k: 'relief', a: 1, b: 0, pset: 160e5 }, { k: 'motor', a: 1, b: 0, q, M: 50 }] }), q, 40 * LMIN);
   assert.ok(r.ok); close(r.p[1], 50 / q, 1e-6); close(r.v[2], 40 * LMIN / q, 1e-4); close(r.v[2] * 30 / Math.PI, 1250, 1e-4);
 });
+
+test('routing a pipe like a board track: a straight stretch and a 45° one, or a right angle, either stretch first', async () => {
+  const { bench } = await import('./load.mjs');
+  const r = bench().run(() => { const L = { x: 0, y: 0 }; return {
+    a: pipeElbow(L, { x: 30, y: 10 }, '45', 0), b: pipeElbow(L, { x: 30, y: 10 }, '45', 1), c: pipeElbow(L, { x: -10, y: 30 }, '45', 0), d: pipeElbow(L, { x: 10, y: -30 }, '45', 1),
+    diag: pipeElbow(L, { x: 20, y: -20 }, '45', 0), flat: pipeElbow(L, { x: 20, y: 0 }, '45', 0), q: pipeElbow(L, { x: 30, y: 10 }, '90', 0), q2: pipeElbow(L, { x: 30, y: 10 }, '90', 1), free: pipeElbow(L, { x: 30, y: 10 }, 'free', 0) }; });
+  assert.deepEqual(r.a, { x: 20, y: 0 }); assert.deepEqual(r.b, { x: 10, y: 10 });       // 20 straight then 10 at 45°; or the other way round
+  assert.deepEqual(r.c, { x: 0, y: 20 }); assert.deepEqual(r.d, { x: 10, y: -10 });
+  assert.equal(r.diag, null); assert.equal(r.flat, null); assert.equal(r.free, null);
+  assert.deepEqual(r.q, { x: 30, y: 0 }); assert.deepEqual(r.q2, { x: 0, y: 10 });
+});

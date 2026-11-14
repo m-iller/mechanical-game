@@ -25,6 +25,21 @@ const pipePath = q => { const a = byId(q.a), b = byId(q.b); return a && b ? [por
 function pipeLen(q) { const P = pipePath(q), a = byId(q.a), b = byId(q.b); let L = Math.abs(a.layer - b.layer) * LP; for (let i = 1; i < P.length; i++) L += Math.hypot(P[i].x - P[i - 1].x, P[i].y - P[i - 1].y); return L / 1000; }
 function addPipe(a, pa, b, pb, opt = {}) { const q = { id: nextId++, a: a.id, pa, b: b.id, pb, pts: opt.pts || [], d: opt.d || 10, kind: opt.kind || 'pressure', fluid: opt.fluid || 'oil', mat: opt.mat || 'steel', ph: 0 }; pipes.push(q); return q; }
 const portKey = (id, k) => id + ':' + k;
+/* The run from the last fixed point L to the pointer C, laid the way a track is routed on a circuit board: a straight stretch and
+   a stretch at 45° ('45'), two stretches at a right angle ('90'), or one straight line ('free'). flip puts the other stretch first.
+   Returns the corner between the two stretches, or null when one stretch is enough. */
+function pipeElbow(L, C, mode, flip) {
+  const dx = C.x - L.x, dy = C.y - L.y, ax = Math.abs(dx), ay = Math.abs(dy), sx = Math.sign(dx), sy = Math.sign(dy), eps = 1e-6;
+  if (mode === 'free' || ax < eps || ay < eps) return null;
+  if (mode === '90') return flip ? { x: L.x, y: C.y } : { x: C.x, y: L.y };
+  if (Math.abs(ax - ay) < eps) return null;
+  const d = Math.min(ax, ay);
+  if (flip) return { x: L.x + sx * d, y: L.y + sy * d };                                  // the 45° stretch first
+  return ax > ay ? { x: C.x - sx * d, y: L.y } : { x: L.x, y: C.y - sy * d };               // the straight stretch first
+}
+const ROUTE_MODES = ['45', '90', 'free'];
+const pipeLast = d => d.pts.length ? { x: d.pts[d.pts.length - 1][0], y: d.pts[d.pts.length - 1][1] } : portPos(byId(d.a), d.pa);
+const portTaken = (id, k) => pipes.some(q => (q.a === id && q.pa === k) || (q.b === id && q.pb === k));
 
 let hyd = { ok: true, has: false, p: new Map(), pipe: new Map(), part: new Map(), pmax: 1e5, x: null, sig: '' };
 function hydroNet() {

@@ -167,6 +167,7 @@ function hydDraw(g, s) {
     case 'hthrottle': seg(-9, 0, 9, 0); ctx.lineWidth = w; ctx.beginPath(); ctx.arc(0, -7.5, 5.2, 0.25 * Math.PI, 0.75 * Math.PI); ctx.stroke(); ctx.beginPath(); ctx.arc(0, 7.5, 5.2, 1.25 * Math.PI, 1.75 * Math.PI); ctx.stroke(); arrow(-5, 5, 5, -5); break;
     case 'hcheck': seg(-9, 0, -1.6, 0); seg(3.4, 0, 9, 0); seg(-4.5, -3.6, -0.6, -1.3, thin * 1.3); seg(-4.5, 3.6, -0.6, 1.3, thin * 1.3); ctx.beginPath(); ctx.arc(1.2, 0, 2.2, 0, TAU); ctx.fillStyle = C.paper; ctx.fill(); ctx.lineWidth = w; ctx.stroke(); break;
     case 'hnode': ctx.beginPath(); ctx.arc(0, 0, 1.9, 0, TAU); ctx.fill(); break;
+    case 'haccu': seg(0, 9, 0, 6); ctx.beginPath(); ctx.moveTo(-4, 6); ctx.lineTo(4, 6); ctx.lineTo(4, -4); ctx.arc(0, -4, 4, 0, Math.PI, true); ctx.closePath(); ctx.fillStyle = C.paper; ctx.fill(); ctx.lineWidth = w; ctx.stroke(); seg(-4, 0, 4, 0, thin); ctx.fillStyle = col; ctx.beginPath(); ctx.moveTo(0, -3); ctx.lineTo(-1.8, -6); ctx.lineTo(1.8, -6); ctx.closePath(); ctx.fill(); break;
   }
   ctx.restore();
   hydPorts(g, s);
@@ -255,6 +256,12 @@ function ioDraw(g, s) {
       ctx.globalAlpha *= 0.75 * k; ctx.fillStyle = C.jam; ctx.fillRect(-R, -R, 2 * R, 2 * R); ctx.globalAlpha /= 0.75 * k || 1; ctx.lineWidth = w; ctx.strokeRect(-R, -R, 2 * R, 2 * R);
       ctx.lineWidth = thin * 1.5; ctx.beginPath(); ctx.moveTo(-R * 0.75, 0); for (let i = 0; i <= 6; i++) ctx.lineTo(-R * 0.6 + R * 0.2 * i, i % 2 ? R * 0.3 : -R * 0.3); ctx.lineTo(R * 0.75, 0); ctx.stroke(); ctx.fillStyle = col;
       if (g.load) { ctx.beginPath(); ctx.arc(0, 0, 2.2, 0, TAU); ctx.fill(); spoke(0, R * 0.9); } break;
+    }
+    case 'conveyor': { // drive drum, tail drum, belt with marks that travel, and a box riding on it
+      const Lc = g.len || 160, trav = mod(an * R, 20); ctx.lineWidth = w; ctx.beginPath(); ctx.moveTo(0, -R); ctx.lineTo(Lc, -R); ctx.arc(Lc, 0, R, -Math.PI / 2, Math.PI / 2); ctx.lineTo(0, R); ctx.arc(0, 0, R, Math.PI / 2, -Math.PI / 2); ctx.stroke();
+      for (let x = trav; x < Lc; x += 20) seg(x, -R, x, -R - 2.5, thin);
+      ctx.beginPath(); ctx.arc(Lc, 0, 2, 0, TAU); ctx.fill(); disc(Math.max(2.5, R * 0.3)); spoke(0, R);
+      const bx = mod(an * R, Lc - 14); ctx.fillStyle = C.paper; ctx.fillRect(bx, -R - 9, 14, 9); ctx.lineWidth = thin * 1.4; ctx.strokeRect(bx, -R - 9, 14, 9); ctx.fillStyle = col; break;
     }
     case 'hoist': drum(false); break;
     case 'weight': drum(true); break;

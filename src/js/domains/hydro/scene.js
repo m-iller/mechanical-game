@@ -15,7 +15,7 @@ const rodD = p => p.dr || Math.round(p.d * 0.56);
 const cylA1 = p => Math.PI * (p.d / 1000) ** 2 / 4, cylA2 = p => cylA1(p) - Math.PI * (rodD(p) / 1000) ** 2 / 4;
 const PORTS = {
   htank: [['T', 0, 0]], hpump: [['S', -11, 0], ['P', 11, 0]], hmotor: [['A', -11, 0], ['B', 11, 0]], hrelief: [['P', -9, 0], ['T', 9, 0]],
-  hvalve: [['P', -4, 9], ['T', 4, 9], ['A', -4, -9], ['B', 4, -9]], hthrottle: [['A', -9, 0], ['B', 9, 0]], hcheck: [['A', -9, 0], ['B', 9, 0]], hnode: [['', 0, 0]],
+  hvalve: [['P', -4, 9], ['T', 4, 9], ['A', -4, -9], ['B', 4, -9]], hthrottle: [['A', -9, 0], ['B', 9, 0]], hcheck: [['A', -9, 0], ['B', 9, 0]], hnode: [['', 0, 0]], haccu: [['P', 0, 9]],
 };
 // ports of a part in its own frame: [name, x, y]
 const portsOf = p => T(p).grp === 'heat' ? (p.type === 'tstack' ? [['in', 0, 0]] : TH_PORTS) : ty(p, 'generator', 'heater') ? [['E', p.d / 2 + 3, 0]] : p.type === 'hcyl' ? [['A', 5, 5.5], ['B', CYL_L0(p) - 8, 5.5]] : PORTS[p.type] || [];
@@ -35,8 +35,10 @@ function hydroNet() {
   // a suction or tank port left open is taken to stand in the tank
   const toTank = (p, k) => used.has(portKey(p.id, k)) ? node(p, k) : 0;
   const elems = [], owner = [];
+  // a pipe that meets a pipe of another bore at either end passes through a reducer there
+  const ends = q => [[q.a, q.pa], [q.b, q.pb]].filter(([id, k]) => oil.some(o => o !== q && o.d !== q.d && ((o.a === id && o.pa === k) || (o.b === id && o.pb === k)))).length;
   const add = (e, own) => { elems.push(e); owner.push(own); };
-  for (const q of oil) { const a = byId(q.a), b = byId(q.b); add({ k: 'pipe', a: node(a, q.pa), b: node(b, q.pb), d: q.d / 1000, L: Math.max(1e-3, pipeLen(q)), eps: ROUGH[q.mat] || ROUGH.steel, zeta: q.pts.length * ZETA.elbow, fluid: q.fluid }, { pipe: q }); }
+  for (const q of oil) { const a = byId(q.a), b = byId(q.b); add({ k: 'pipe', a: node(a, q.pa), b: node(b, q.pb), d: q.d / 1000, L: Math.max(1e-3, pipeLen(q)), eps: ROUGH[q.mat] || ROUGH.steel, zeta: q.pts.length * ZETA.elbow + ends(q) * ZETA.reducer, fluid: q.fluid }, { pipe: q }); }
   for (const p of hp) {
     const live = portsOf(p).some((_, k) => used.has(portKey(p.id, k))); if (!live) continue;
     if (p.type === 'hpump') add({ k: 'pump', a: toTank(p, 0), b: node(p, 1), Q: p.q * 1e-6 * Math.abs(p.w) / 60 * ETA_V }, { part: p });

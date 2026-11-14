@@ -117,7 +117,8 @@ test('demo: motor → belt → planetary → chain → conveyor; total ratio and
   assert.equal(r.lock, '');
   close(Math.abs(r.i), 22.5, 1e-9);
   close(r.L.etaPath, 0.96 * 0.98 * 0.95, 1e-9);
-  close(r.M, 45 / (22.5 * 0.96 * 0.98 * 0.95), 1e-9);
+  close(r.L.M, 1450 * 0.028 / 0.9, 1e-12);                       // belt pull on a 56 mm drum, conveyor efficiency 0.9
+  close(r.M, r.L.M / (22.5 * 0.96 * 0.98 * 0.95), 1e-9);
   assert.ok(r.n > 1320 && r.n < 1500);            // 2.24 N·m asked of a 2.68 N·m motor
   assert.deepEqual(r.warn, []);
 });

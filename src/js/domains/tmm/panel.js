@@ -50,11 +50,13 @@ function tmmCycleRows(p) {
     rows.push([t('io.stroke'), fmtU(Math.max(...s.data), 'mm'), ex('H', Math.max(...s.data), 'mm', 'H = s_max − s_min', [], ['ex.cycle'])]);
     rows.push([t('io.vmax'), fmtU(peakOf(v.data), 'm/s'), ex('v', peakOf(v.data), 'm/s', 'v = (ds/dφ)·ω', wv, ['ex.cycle'])]);
     rows.push([t('io.amax'), fmtU(peakOf(a.data), 'm/s2'), ex('a', peakOf(a.data), 'm/s2', 'a = (d²s/dφ²)·ω²', wv, ['ex.cycle', 'ex.constW'])]);
+    rows.push(...deadRows(S, v.data), ...angleRows(S, p));
   } else if (p !== S.c) {
     const [th, om, ep] = S.series;
     rows.push([t('io.swing'), fmtU(Math.max(...th.data), 'deg'), ex('ψ', Math.max(...th.data), 'deg', 'ψ = θ_max − θ_min', [], ['ex.cycle'])]);
     rows.push([t('io.wmax'), fmtU(peakOf(om.data), 'rad/s'), ex('ω₂', peakOf(om.data), 'rad/s', 'ω₂ = (dθ/dφ)·ω', wv, ['ex.cycle'])]);
     rows.push([t('io.emax'), fmtU(peakOf(ep.data), 'rad/s2'), ex('ε', peakOf(ep.data), 'rad/s2', 'ε = (d²θ/dφ²)·ω²', wv, ['ex.cycle', 'ex.constW'])]);
+    rows.push(...deadRows(S, om.data), ...angleRows(S, p));
   } else if (S.dyn) {
     const d = S.dyn, J = crankJ(p), g = tmmGrashof(p);
     if (g) rows.push([t('io.grashof'), t('gr.' + g.kind), ex('s + l', (g.s + g.l) * 1e-3, 'mm', 's + l ≤ p + q', [['s', g.s * 1e-3, 'mm'], ['l', g.l * 1e-3, 'mm'], ['p + q', g.rest * 1e-3, 'mm']], ['ex.grashof'])]);
@@ -114,4 +116,53 @@ function tmmDrawPath(g, s) {
   ctx.save(); ctx.strokeStyle = C.select; ctx.lineWidth = 1 / s; ctx.setLineDash([3 / s, 2.5 / s]);
   jointsOf(g).forEach((loc, j) => { if (g === c && j === 0) return; ctx.beginPath(); for (let k = 0; k <= cyc.N; k++) { const P = cycPoint(cyc, k % cyc.N, g.id, loc); k ? ctx.lineTo(P[0], P[1]) : ctx.moveTo(P[0], P[1]); } ctx.stroke(); });
   ctx.restore();
+}
+
+// crank angles, from where it stands at the start of the cycle, at which the output link stops and turns back
+function deadRows(S, rate) {
+  const N = rate.length, at = []; for (let k = 0; k < N; k++) { const a = rate[k], b = rate[(k + 1) % N]; if ((a <= 0 && b > 0) || (a >= 0 && b < 0)) at.push(Math.round((k + Math.abs(a) / (Math.abs(a) + Math.abs(b) || 1)) * 360 / N)); }
+  if (!at.length || at.length > 4) return [];
+  const th0 = mod(S.cyc.th0 * 180 / Math.PI, 360);
+  return [[t('io.dead'), at.map(a => `${Math.round(mod(th0 + S.cyc.sign * a, 360))}°`).join(', '), ex('φ', at[0] * Math.PI / 180, 'deg', 'ds/dφ = 0', [], ['ex.dead'])]];
+}
+/* The angle that tells how well the driving link pushes the driven one, at its worst over the turn:
+   for a slider, the pressure angle between the rod and the guide (should stay under about 30°);
+   for a rocker, the transmission angle between the coupler and the rocker (should stay over about 40°). */
+function linkAngle(S, p) {
+  const drv = pairs.filter(q => q.type === 'R' && (q.a === p.id || q.b === p.id)).map(q => byId(q.a === p.id ? q.b : q.a)).find(o => o && BAR.includes(o.type) && !linkFixed(o)); if (!drv) return null;
+  const rail = SLIDES.includes(p.type) ? railOf(p) : null; if (SLIDES.includes(p.type) && !rail) return null;
+  let worst = rail ? 0 : Math.PI / 2;
+  for (let k = 0; k < S.cyc.N; k++) { let a = Math.abs(wrap(cycAngle(S.cyc, k, drv.id) - (rail ? cycAngle(S.cyc, k, rail.id) : cycAngle(S.cyc, k, p.id)))); if (a > Math.PI / 2) a = Math.PI - a; worst = rail ? Math.max(worst, a) : Math.min(worst, a); }
+  return { worst, slider: !!rail, drv };
+}
+function angleRows(S, p) {
+  const a = linkAngle(S, p); if (!a) return [];
+  return [[t(a.slider ? 'io.press' : 'io.trans'), `${fmtNum(a.worst * 180 / Math.PI, 3)}°`, ex(a.slider ? 'ϑ' : 'μ', a.worst, 'deg', a.slider ? 'ϑ = ∠(rod, guide)' : 'μ = ∠(coupler, rocker)', [], [a.slider ? 'ex.press' : 'ex.trans'])]];
+}
+addCheck('angles', () => {
+  const out = [];
+  for (const p of parts) if (isLink(p) && !linkFixed(p) && (SLIDES.includes(p.type) || p.type === 'trocker')) {
+    const c = crankOf(p); if (!c || !c.w) continue; const cyc = tmmCycle(c); if (!cyc.ok) continue; const a = linkAngle({ cyc }, p); if (!a) continue;
+    if (a.slider ? a.worst > 0.61 : a.worst < 0.52) out.push({ level: 'warn', code: a.slider ? 'w.press' : 'w.trans', text: t(a.slider ? 'w.press' : 'w.trans', { a: p.name, d: fmtNum(a.worst * 180 / Math.PI, 3) }), ids: [p.id] });
+  }
+  return out;
+});
+/* Plans of velocities and accelerations for the position the mechanism is in: every joint's vector drawn from one pole,
+   the ends of joints that sit on one link joined by a thin line (the relative velocity or acceleration within that link). */
+function drawPlans(cvs, p) {
+  const c = p.type === 'tcrank' ? p : crankOf(p), cyc = c && tmmCycle(c), dpr2 = window.devicePixelRatio || 1, Wc = cvs.clientWidth || 300, Hc = 150, ok = cyc && cyc.ok && c.w;
+  cvs.hidden = !ok; if (!ok) return;
+  cvs.style.height = Hc + 'px'; if (cvs.width !== Math.round(Wc * dpr2)) { cvs.width = Math.round(Wc * dpr2); cvs.height = Math.round(Hc * dpr2); }
+  const g = cvs.getContext('2d'); g.setTransform(dpr2, 0, 0, dpr2, 0, 0); g.clearRect(0, 0, Wc, Hc); g.font = `10px ${C.mono}`; g.textBaseline = 'middle';
+  const k = Math.floor(cycIndex(cyc)) % cyc.N, w = Math.abs(c.w) * RPM, links = [c, ...cyc.moving], pts = new Map();
+  for (const L of links) jointsOf(L).forEach((loc, j) => { if (L === c && j === 0) return; const X = cycD(cyc, k, i => cycPoint(cyc, i, L.id, loc)[0]), Y = cycD(cyc, k, i => cycPoint(cyc, i, L.id, loc)[1]), key = Math.round(X[0] * 20) + ':' + Math.round(Y[0] * 20);
+    if (!pts.has(key)) pts.set(key, { v: [X[1] * w * 1e-3 * cyc.sign, Y[1] * w * 1e-3 * cyc.sign], a: [X[2] * w * w * 1e-3, Y[2] * w * w * 1e-3], names: [], links: [] }); const r = pts.get(key); r.names.push(L.name); r.links.push(L.id); });
+  const P = [...pts.values()];
+  [['v', 'm/s', 'p'], ['a', 'm/s2', 'π']].forEach(([f, unit, pole], i) => {
+    const x0 = i * Wc / 2, cx = x0 + Wc / 4, cy = Hc / 2 + 8, mx = Math.max(1e-9, ...P.map(r => Math.hypot(r[f][0], r[f][1]))), sc = Math.min(Wc / 4 - 14, Hc / 2 - 22) / mx, tip = r => [cx + r[f][0] * sc, cy + r[f][1] * sc];
+    g.strokeStyle = C.line; g.lineWidth = 1; for (let a = 0; a < P.length; a++) for (let b = a + 1; b < P.length; b++) if (P[a].links.some(id => P[b].links.includes(id))) { const A = tip(P[a]), B = tip(P[b]); g.beginPath(); g.moveTo(A[0], A[1]); g.lineTo(B[0], B[1]); g.stroke(); }
+    for (const r of P) { const T2 = tip(r); g.strokeStyle = i ? C.brass : C.select; g.lineWidth = 1.5; g.beginPath(); g.moveTo(cx, cy); g.lineTo(T2[0], T2[1]); g.stroke(); g.fillStyle = C.ink; g.textAlign = T2[0] >= cx ? 'left' : 'right'; g.fillText(r.names.join('/'), T2[0] + (T2[0] >= cx ? 3 : -3), T2[1]); }
+    g.fillStyle = C.ink; g.beginPath(); g.arc(cx, cy, 2, 0, TAU); g.fill(); g.textAlign = 'right'; g.fillText(pole, cx - 4, cy - 6);
+    g.textAlign = 'left'; g.fillStyle = C.muted; g.fillText(`${f}: ${t('io.upTo')} ${fmtU(mx, unit)}`, x0 + 5, 9);
+  });
 }

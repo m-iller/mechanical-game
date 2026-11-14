@@ -45,6 +45,7 @@ const TYPES = {
   spring:   { pre: 'SP', grp: 'io',     key: 'd',   lim: [16, 200, 1], def: 30 },   // wound spring
   generator:{ pre: 'GN', grp: 'io',     key: 'd',   lim: [16, 400, 1], def: 44 },
   heater:   { pre: 'HT', grp: 'io',     key: 'd',   lim: [16, 400, 1], def: 36 },
+  conveyor: { pre: 'CV', grp: 'io',     key: 'd',   lim: [10, 600, 1], def: 56 },   // belt conveyor: drive drum diameter
   hoist:    { pre: 'HS', grp: 'io',     key: 'd',   lim: [10, 600, 1], def: 40 },   // drum diameter
   machine:  { pre: 'X',  grp: 'io',     key: 'd',   lim: [16, 400, 1], def: 50 },   // black-box machine: always a load
   /* links of a mechanism (theory of mechanisms and machines). x, y is the first joint, dir the link's angle.
@@ -69,7 +70,8 @@ const TYPES = {
   hvalve:   { pre: 'DV', grp: 'hyd', key: 'dn',   lim: [1, 40, 0.5], def: 6, dir: 1 },              // 4/3 directional valve, nominal bore, mm
   hthrottle:{ pre: 'TH', grp: 'hyd', key: 'dn',   lim: [0.2, 30, 0.1], def: 2, dir: 1 },            // orifice diameter, mm
   hcheck:   { pre: 'CV', grp: 'hyd', key: 'dn',   lim: [1, 40, 0.5], def: 6, dir: 1 },
-  hnode:    { pre: 'J',  grp: 'hyd' },                                                               // tee: a point where pipes meet
+  hnode:    { pre: 'J',  grp: 'hyd' },
+  haccu:    { pre: 'AC', grp: 'hyd', dir: 1 },                                                      // accumulator: holds the line's pressure; in steady state nothing flows into it                                                               // tee: a point where pipes meet
   hcyl:     { pre: 'CY', grp: 'hyd', key: 'd',    lim: [10, 400, 1], def: 40, key2: 'st', lim2: [10, 1500], dir: 1 },   // bore and stroke, mm
   /* gas-turbine and steam plant blocks: an inlet and an outlet port each, joined by gas and steam lines */
   tcomp:    { pre: 'CP', grp: 'heat', key: 'pr',  lim: [1.5, 40, 0.1], def: 8, dir: 1 },           // compressor: pressure ratio
@@ -90,7 +92,7 @@ const DEFAULTS = { emotor: { motor: { kind: 'induction', P: 370, n: 1320, ks: 2.
   engine: { motor: { kind: 'ice', tq: 100, n: 5000, rpm: 3000 }, eD: 80, eS: 90, eps: 9.5, cyl: 4, ekind: 'otto', thr: 1 }, hand: { motor: { kind: 'torque', tq: 12, n: 60, rpm: 60 } },
   weight: { m: 20, motor: { kind: 'torque', tq: 4, n: 3000, rpm: 100 } }, spring: { M: 2, motor: { kind: 'torque', tq: 2, n: 3000, rpm: 100 } },
   tcomp: { mf: 1, etaC: 0.85 }, tturb: { etaT: 0.88, a1: 16, zst: 1, rho: 0, nmax: 12000 }, tboil: { mf: 1, Tb: 350 },
-  generator: { Pn: 3000, nn: 3000, ge: 0.9 }, heater: { hm: 2, hk: 5 }, hoist: { m: 50 }, carrier: { n: 3 }, tplate: { n: 3 }, tcam: { h: 8 }, hcyl: { st: 60, s: 0, F: 0 }, hvalve: { pos: 0 }, crank: { l: 40 }, ring: { loose: true }, clutch: { on: true }, brake: { on: true }, ratchet: { on: false } };
+  generator: { Pn: 3000, nn: 3000, ge: 0.9 }, heater: { hm: 2, hk: 5 }, hoist: { m: 50 }, conveyor: { F: 1000, len: 160 }, carrier: { n: 3 }, tplate: { n: 3 }, tcam: { h: 8 }, hcyl: { st: 60, s: 0, F: 0 }, hvalve: { pos: 0 }, crank: { l: 40 }, ring: { loose: true }, clutch: { on: true }, brake: { on: true }, ratchet: { on: false } };
 const PROPS = ['z', 'zw', 'd', 'r', 'n', 'l', 'h', 'len', 'l0', 'l1', 'dir', 'on', 'loose', 'held', 'label', 'F', 'fw', 'm', 'J', 'rr', 'law', 'b1', 'bd', 'b2', 'q', 'pset', 'dn', 'pos', 'st', 's', 'dr', 'M', 'Fb', 'Pn', 'nn', 'ge', 'hm', 'hk', 'eD', 'eS', 'eps', 'cyl', 'ekind', 'thr', 'pr', 'mf', 'etaC', 'T3', 'dm', 'etaT', 'a1', 'zst', 'rho', 'nmax', 'pb', 'Tb', 'pk'];
 const MOTOR_KEYS = ['kind', 'rpm', 'tq', 'P', 'n', 'ks', 'km'], LOAD_KEYS = ['kind', 'tq', 'n', 'eta', 'table'];
 const pickKeys = (o, keys) => { const r = {}; for (const k of keys) if (o[k] != null) r[k] = Array.isArray(o[k]) ? o[k].map(x => Array.isArray(x) ? x.slice() : x) : o[k]; return r; };
@@ -145,12 +147,13 @@ const RI = p => M * p.z / 2;                                      // a ring's in
 const RO = p => {
   switch (p.type) {
     case 'ring': return M * meshZ(p) / 2;
-    case 'pulley': case 'fric': case 'flywheel': case 'clutch': case 'brake': case 'emotor': case 'machine': case 'engine': case 'hand': case 'weight': case 'spring': case 'generator': case 'heater': case 'hoist': return p.d / 2;
+    case 'pulley': case 'fric': case 'flywheel': case 'clutch': case 'brake': case 'emotor': case 'machine': case 'engine': case 'hand': case 'weight': case 'spring': case 'generator': case 'heater': case 'hoist': case 'conveyor': return p.d / 2;
     case 'sprocket': return p.z * CP / TAU;
     case 'htank': case 'hpump': case 'hmotor': case 'hrelief': case 'hthrottle': case 'hcheck': return 9;
     case 'hvalve': return 18;
     case 'tcomp': case 'tburn': case 'tturb': case 'tboil': case 'tcond': case 'tfeed': case 'tstack': return 10;
     case 'hnode': return 2.5;
+    case 'haccu': return 8;
     case 'carrier': return HUB;
     case 'crank': return p.r + 4;
     case 'cam': return CB + p.h;

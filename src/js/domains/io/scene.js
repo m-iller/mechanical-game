@@ -7,11 +7,12 @@
                         electrical power P_el = η·M·ω goes down the wires, shared equally between the heaters on them
              heater     heats up by what it is given: electrically through a wire, and mechanically if it is set as a friction load on a shaft.
                         One thermal mass: m·c·dT/dt = P − k·(T − T₀)
-             hoist      a drum lifting a mass: constant torque m·g·D/(2·η) */
+             hoist      a drum lifting a mass: constant torque m·g·D/(2·η)
+             conveyor   a belt on a drive drum: constant torque F·D/(2·η), F the pull the load and the friction ask for */
 'use strict';
 
-const G0 = 9.81, T_AMB = 20, C_STEEL = 460, HOIST_ETA = 0.95;
-const isSource = p => ty(p, 'emotor', 'engine', 'hand', 'weight', 'spring'), IO_ROUND = ['engine', 'generator', 'heater', 'hoist', 'hand', 'weight', 'spring'];
+const G0 = 9.81, T_AMB = 20, C_STEEL = 460, HOIST_ETA = 0.95, CONV_ETA = 0.9;
+const isSource = p => ty(p, 'emotor', 'engine', 'hand', 'weight', 'spring'), IO_ROUND = ['engine', 'generator', 'heater', 'hoist', 'conveyor', 'hand', 'weight', 'spring'];
 const engineOf = p => engineCycle({ D: p.eD / 1000, S: p.eS / 1000, eps: p.eps, cyl: p.cyl, kind: p.ekind || 'otto' });
 const isWire = q => q.fluid === 'el';
 const wiresOf = p => pipes.filter(q => isWire(q) && (q.a === p.id || q.b === p.id));
@@ -20,6 +21,7 @@ const wiredTo = (p, type) => wiresOf(p).map(q => byId(q.a === p.id ? q.b : q.a))
 function autoLoad(p) {
   if (p.type === 'generator') { const wn = p.nn * W_RPM, Mn = p.Pn / (wn * p.ge), k = wiredTo(p, 'heater').length ? 1 : 0.03; return w => k * Mn * w / wn; }   // open circuit: only its own losses
   if (p.type === 'hoist') return () => (p.m || 0) * G0 * p.d / 2000 / HOIST_ETA;
+  if (p.type === 'conveyor') return () => (p.F || 0) * p.d / 2000 / CONV_ETA;                         // belt pull on the drive drum
   if (p.type === 'tcomp') return w => (p.pc || 0) / Math.max(w, 1);                                   // a compressor takes the power its flow needs
   return null;
 }

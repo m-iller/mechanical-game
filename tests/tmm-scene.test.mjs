@@ -150,3 +150,20 @@ test('Assur groups: the slider-crank and the four-bar are a driven link plus one
   assert.deepEqual(r.a, [['II', 2]]); assert.deepEqual(r.left, []);
   assert.deepEqual(r.b, [['II', 2], ['II', 2]]); assert.deepEqual([r.W, r.n, r.ok], [1, 5, true]);
 });
+
+test('slider-crank: dead points with the crank along the guide, largest pressure angle asin(r/l); a short rod is flagged', () => {
+  const r = bench().run(() => {
+    resetScene(1); const [c, rod, g, sl] = insertTemplate('slidercrank', 0, 0); solve();
+    const S = tmmSeries(sl), dead = deadRows(S, S.series[1].data)[0][1], a = linkAngle(S, sl).worst, ok = warnings.map(w => w.code);
+    c.len = 45; rod.len = 70; solve(); return { dead, a, ok, bad: warnings.map(w => w.code) };
+  });
+  assert.equal(r.dead, '180°, 0°'); close(r.a, Math.asin(20 / 70), 1e-3);
+  assert.deepEqual(r.ok, []); assert.ok(r.bad.includes('w.press'));          // asin(45/70) = 40°
+});
+
+test('four-bar: smallest transmission angle from the cosine rule at the folded position', () => {
+  // crank 20, coupler 70, rocker 50, frame 80: cos μ = (b² + c² − (d ∓ a)²) / (2bc); the worse of the two extremes
+  const r = bench().run(() => { resetScene(1); const [c, cp, pv, rk] = insertTemplate('fourbar', 0, 0); solve(); return linkAngle(tmmSeries(rk), rk).worst; });
+  const mu = d => { const m = Math.acos((70 * 70 + 50 * 50 - d * d) / (2 * 70 * 50)); return m > Math.PI / 2 ? Math.PI - m : m; };
+  close(r, Math.min(mu(60), mu(100)), 2e-3);
+});

@@ -84,3 +84,14 @@ test('demo: excavator arm — pump, two valves, two cylinders, boom and stick; t
   assert.ok(r.lift.ds > 10 && Math.abs(r.lift.da) > 0.05 && r.lift.gap < 1e-4);
   close(r.stick.v1, 0, 0, 1e-9); assert.ok(r.stick.ds && Math.abs(r.stick.da) > 0.05 && r.stick.boomStill);
 });
+
+test('a reducer is counted where pipes of different bore meet; an accumulator on the line changes nothing in steady state', () => {
+  const r = bench().run(() => {
+    resetScene(1); const tk = addPart('htank', { x: 0, y: 40 }), pm = addPart('hpump', { x: 0, y: 0, q: 10, motor: { rpm: 1500, tq: 50 } }), j = addPart('hnode', { x: 40, y: 0 }), t2 = addPart('htank', { x: 120, y: 40 });
+    addPipe(tk, 0, pm, 0, { d: 20, kind: 'suction' }); const a = addPipe(pm, 1, j, 0, { d: 12 }), b = addPipe(j, 0, t2, 0, { d: 8, kind: 'return' }); solve();
+    const z = [hyd.pipe.get(a.id).zeta, hyd.pipe.get(b.id).zeta], p0 = hyd.part.get(pm.id).pP;
+    const ac = addPart('haccu', { x: 40, y: -30 }); addPipe(j, 0, ac, 0, { d: 8 }); solve();
+    return { z, p0, p1: hyd.part.get(pm.id).pP, ok: hyd.ok, q: hyd.pipe.get(pipes[pipes.length - 1].id).Q };
+  });
+  assert.deepEqual(r.z, [0.3, 0.3]); assert.ok(r.ok); close(r.p1, r.p0, 1e-6); close(r.q, 0, 0, 1e-9);
+});

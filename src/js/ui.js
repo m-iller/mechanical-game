@@ -23,6 +23,7 @@ const sizeText = p => {
     case 'generator': return fmtU(p.Pn, 'power');
     case 'heater': return `${fmtNum(p.T == null ? 20 : p.T, 3)} °C`;
     case 'hoist': case 'weight': return `${p.m} ${unitSym('kg')}`;
+    case 'conveyor': return `${p.F} ${unitSym('N')}`;
     case 'hand': case 'spring': return '';
     case 'machine': return '';
     case 'carrier': return `r${p.r}`;
@@ -316,8 +317,8 @@ function renderSel() {
       else body.append(labelled(t('sel.layer'), layerSeg(p.layer, l => { setLayer(p, l); commit(); })));
       const tg = [];
       if (T0.tog) tg.push(btn(t(`tog.${p.type}.${p.on ? 1 : 0}`), () => { p.on = !p.on; commit(); }, p.on));
-      if (!isLin(p) && !isSource(p) && !ty(p, 'machine', 'generator', 'heater', 'hoist') && (!isLink(p) || isDriver(p)) && !isPlant(p)) tg.push(btn(t('tog.motor'), () => { if (p.motor) delete p.motor; else { p.motor = { kind: 'speed', rpm: 60, tq: 2 }; delete p.load; } commit(); }, !!p.motor));
-      if (!isLin(p) && !isShaft(p) && !isLink(p) && !isPlant(p) && !isSource(p) && !ty(p, 'machine', 'brake', 'generator', 'hoist') && !p.motor) tg.push(btn(t('tog.load'), () => { if (p.load) delete p.load; else p.load = { kind: 'const', tq: 1, n: 1000, eta: 1 }; commit(); }, !!p.load));
+      if (!isLin(p) && !isSource(p) && !ty(p, 'machine', 'generator', 'heater', 'hoist', 'conveyor') && (!isLink(p) || isDriver(p)) && !isPlant(p)) tg.push(btn(t('tog.motor'), () => { if (p.motor) delete p.motor; else { p.motor = { kind: 'speed', rpm: 60, tq: 2 }; delete p.load; } commit(); }, !!p.motor));
+      if (!isLin(p) && !isShaft(p) && !isLink(p) && !isPlant(p) && !isSource(p) && !ty(p, 'machine', 'brake', 'generator', 'hoist', 'conveyor') && !p.motor) tg.push(btn(t('tog.load'), () => { if (p.load) delete p.load; else p.load = { kind: 'const', tq: 1, n: 1000, eta: 1 }; commit(); }, !!p.load));
       if (!isLin(p) && !isLink(p) && !isPlant(p) && p.type !== 'brake') tg.push(btn(t('tog.held'), () => { p.held = !p.held; commit(); }, !!p.held));
       if (isVert(p) && !isShaft(p) && !ty(p, 'clutch', 'diff')) tg.push(btn(t('tog.loose'), () => { p.loose = !p.loose; commit(); }, !!p.loose));
       if (p.mount) tg.push(btn(t('tog.unmount'), () => { delete p.mount; commit(); }));
@@ -342,7 +343,7 @@ function renderSel() {
           r.append(btn('×', () => { pairs = pairs.filter(x => x !== q); commit(); })); box.append(r);
         }
         body.append(mine.length ? labelled(t('sel.pairs'), box) : el('p', t('sel.noPairs'), { className: 'hint' }), ...tmmFields(p));
-        const gc = el('canvas', null, { className: 'graphs' }); body.append(gc); graphTick = () => { if (gc.isConnected) drawGraphs(gc, p); }; selRefresh.push(graphTick);
+        const gc = el('canvas', null, { className: 'graphs' }), pc = el('canvas', null, { className: 'graphs' }); body.append(gc, pc); graphTick = () => { if (gc.isConnected) { drawGraphs(gc, p); drawPlans(pc, p); } }; selRefresh.push(graphTick);
       }
       if (isHyd(p)) body.append(...hydFields(p));
       if (IO_ROUND.includes(p.type)) body.append(...ioFields(p));
@@ -581,6 +582,10 @@ function ioPartRows(p) {
     rows.push([t('ht.P'), fmtU(r.P, 'power')], [t('ht.T'), `${fmtNum(p.T == null ? T_AMB : p.T, 3)} °C`],
       [t('ht.Tss'), `${fmtNum(r.Tss, 3)} °C`, ex('T', r.Tss + 273.15, 'degC', 'T = T₀ + P / k', [['T₀', T_AMB + 273.15, 'degC'], ['P', r.P, 'power'], ['k', `${p.hk} W/K`]], ['ex.heat'])],
       [t('ht.tau'), `${fmtNum(r.tau, 3)} ${unitSym('s')}`, ex('τ', r.tau, 's', 'τ = m·c / k', [['m', p.hm, 'kg'], ['c', `${C_STEEL} J/(kg·K)`], ['k', `${p.hk} W/K`]], ['ex.heat'])]);
+  } else if (p.type === 'conveyor') {
+    const L = power.load.get(p.id) || { M: 0, P: 0, Pout: 0 }, v = w * p.d / 2000;
+    rows.push([t('cv.v'), fmtU(v, 'm/s'), ex('v', v, 'm/s', 'v = ω·D / 2', [['ω', w, 'rpm'], ['D', p.d / 1000, 'mm']], [])],
+      [t('io.M'), fmtU(L.M, 'Nm'), ex('M', L.M, 'Nm', 'M = F·D / (2·η)', [['F', p.F, 'N'], ['D', p.d / 1000, 'mm'], ['η', CONV_ETA, '']], ['ex.conv'])], [t('io.Pin'), fmtU(L.P, 'power')], [t('io.Pout'), fmtU(L.Pout, 'power'), ex('P', L.Pout, 'power', 'P = F·v', [['F', p.F, 'N'], ['v', v, 'm/s']], [])]);
   } else if (p.type === 'hoist') {
     const L = power.load.get(p.id) || { M: 0, P: 0 }, v = w * p.d / 2000;
     rows.push([t('ho.v'), fmtU(v, 'm/s'), ex('v', v, 'm/s', 'v = ω·D / 2', [['ω', w, 'rpm'], ['D', p.d / 1000, 'mm']], [])],
@@ -597,6 +602,7 @@ function ioFields(p) {
   } else if (p.type === 'generator') out.push(slider(t('motor.P'), 0.01, 5000, 0.01, () => +(p.Pn / 1000).toFixed(3), v => { p.Pn = v * 1000; commit(); }, unitSym('kW')), num('motor.nNom', 'nn', 50, 30000, 10, t('u.rpm')), num('ge.eta', 'ge', 0.3, 1, 0.01));
   else if (p.type === 'heater') out.push(num('link.m', 'hm', 0.05, 10000, 0.05, unitSym('kg')), num('ht.k', 'hk', 0.1, 5000, 0.1, 'W/K'), rowOf(btn(t('ht.cool'), () => { p.T = T_AMB; ui(); })));
   else if (p.type === 'hoist' || p.type === 'weight') out.push(num('link.m', 'm', 0, 100000, 0.5, unitSym('kg')));
+  else if (p.type === 'conveyor') out.push(num('cv.F', 'F', 0, 1e6, 10, unitSym('N')), num('cv.len', 'len', 40, 5000, 10, unitSym('mm')));
   else if (p.type === 'spring') out.push(num('hy.M', 'M', 0.01, 10000, 0.01, unitSym('Nm')));
   if (portsOf(p).length) out.push(rowOf(btn(t('el.lay'), () => { pipeDraft = { a: null, pts: [], cur: null }; sel = new Set(); ui(); })));
   return out;
@@ -826,7 +832,7 @@ $('add').onclick = () => {
   const type = $('new-type').value, nt = TYPES[type];
   const g = addPart(type, { ...(nt.key ? { [nt.key]: +$('new-z').value } : {}), x: 0, y: 0, layer: activeLayer, ...(type === 'shaft' ? { l0: activeLayer, l1: Math.min(layerCount - 1, activeLayer + 1) } : {}) });
   Object.assign(g, freeSpot(tipR(g) + reach(g)));
-  if (!parts.some(p => p.motor) && !isLin(g) && !isLink(g) && !isPlant(g) && !ty(g, 'generator', 'heater', 'hoist') && !ty(g, 'carrier', 'brake', 'machine')) g.motor = { kind: 'speed', rpm: 60, tq: 2 };   // the first part on an empty bench gets the motor
+  if (!parts.some(p => p.motor) && !isLin(g) && !isLink(g) && !isPlant(g) && !ty(g, 'generator', 'heater', 'hoist', 'conveyor') && !ty(g, 'carrier', 'brake', 'machine')) g.motor = { kind: 'speed', rpm: 60, tq: 2 };   // the first part on an empty bench gets the motor
   sel = new Set([g.id]); commit();
 };
 $('tpl-add').onclick = () => { const c = toWorld(W / 2, topMid()); freeze(); const made = insertTemplate($('tpl').value, c.x, c.y); sel = new Set(made.map(p => p.id)); commit(); fit(); };

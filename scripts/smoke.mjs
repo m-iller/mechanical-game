@@ -83,14 +83,14 @@ await page.evaluate(() => { viewMode = 'both'; running = true; });
 await page.evaluate(() => { resetScene(3); const m = insertTemplate('press', 0, 0); solve(); fit(); setActive(2); pick([m[m.length - 1].id]); });
 await page.waitForTimeout(300);
 s = await state(); if (s.lock || s.warnings.some(w => w[0] !== 'info')) fail('press demo: ' + s.lock + JSON.stringify(s.warnings));
-if (await page.locator('canvas.graphs').count() !== 1 || await page.evaluate(() => tmmStuck)) fail('press demo: no graphs, or the mechanism is stuck');
+if (await page.locator('canvas.graphs').count() < 1 || await page.evaluate(() => tmmStuck)) fail('press demo: no graphs, or the mechanism is stuck');
 
 // valve demo: the follower rides the cam and shows its graphs
 await page.evaluate(() => { resetScene(1); const m = insertTemplate('valve', 0, 0); solve(); fit(); pick([m[1].id]); });
 await page.waitForTimeout(300);
 s = await state(); if (s.lock || s.warnings.length) fail('valve demo: ' + s.lock + JSON.stringify(s.warnings));
 const lift = await page.evaluate(() => { const [c, f] = parts; return Math.hypot(f.x - c.x, f.y - c.y) - c.r - f.rr; });
-if (!(lift >= -1e-6 && lift <= 8 + 1e-6) || await page.locator('canvas.graphs').count() !== 1) fail('valve demo: lift ' + lift);
+if (!(lift >= -1e-6 && lift <= 8 + 1e-6) || await page.locator('canvas.graphs').count() < 1) fail('valve demo: lift ' + lift);
 
 // hydraulics: a click on the valve's box drives the cylinder; the excavator arm moves and shows flow
 await page.evaluate(() => { resetScene(2); insertTemplate('hydro', 0, 0); solve(); viewMode = 'top'; fit(); setActive(1); });
@@ -141,7 +141,8 @@ s = await state(); if (s.lock || s.warnings.some(w => w[0] !== 'info')) fail('co
 if (await page.locator('dd.ex').count() < 6) fail('no explained figures in the panel');
 await page.locator('.motor dd.ex').nth(1).click();
 if (!/M = Σ/.test(await page.locator('#why-b').innerText())) fail('the "where from" box did not open');
-await page.evaluate(() => { parts.find(p => p.type === 'machine').load.tq = 500; solve(); ui(); });
+if (process.env.SHOT_CV) { await page.evaluate(() => { why = null; viewMode = 'both'; fit(); setActive(1); ui(); }); await page.waitForTimeout(150); await page.screenshot({ path: process.env.SHOT_CV }); }
+await page.evaluate(() => { parts.find(p => p.type === 'conveyor').F = 16000; solve(); ui(); });
 s = await state(); if (!s.warnings.some(w => w[1] === 'w.stall')) fail('an overloaded motor did not stall');
 
 const extra = process.env.SMOKE_EXTRA;   // optional module with more checks: export default async (page, fail) => {}

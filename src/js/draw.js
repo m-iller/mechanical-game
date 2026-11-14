@@ -327,7 +327,8 @@ function drawSide(dpr, s, bh) {
   ctx.lineWidth = 0.7 / s; ctx.globalAlpha = 0.5; ctx.beginPath();
   for (let x = Math.floor(x0 / 5) * 5; x <= x1; x += 5) { ctx.moveTo(x, BASE); ctx.lineTo(x - 3, BASE + 3); } ctx.stroke(); ctx.globalAlpha = 1;
 
-  const rect = (x, r, z0, z1, fill, ink) => { ctx.fillStyle = fill; ctx.fillRect(x - r, -z1, 2 * r, z1 - z0); ctx.strokeStyle = ink; ctx.lineWidth = 1.2 / s; ctx.strokeRect(x - r, -z1, 2 * r, z1 - z0); };
+  const rect = (x, r, z0, z1, fill, ink) => { ctx.fillStyle = schemeMode ? C.paper : fill;   // in scheme mode a part seen edge-on is its outline
+    ctx.fillRect(x - r, -z1, 2 * r, z1 - z0); ctx.strokeStyle = ink; ctx.lineWidth = 1.2 / s; ctx.strokeRect(x - r, -z1, 2 * r, z1 - z0); };
   const teeth = (x, r, z, ang, z0, z1, ink) => {
     ctx.beginPath(); for (let j = 0; j < z; j++) { const a = ang + TAU * j / z; if (Math.sin(a) > 0) { const X = x + r * Math.cos(a); ctx.moveTo(X, -z0); ctx.lineTo(X, -z1); } }
     ctx.strokeStyle = ink; ctx.lineWidth = 0.8 / s; ctx.globalAlpha *= 0.55; ctx.stroke(); ctx.globalAlpha /= 0.55;
@@ -446,6 +447,10 @@ function drawSide(dpr, s, bh) {
     const zb = ws[0].layer * LP, xa = Math.min(...ws.map(w => w.x - RO(w))), xb = Math.max(...ws.map(w => w.x + RO(w))), belt = L.kind === 'belt';
     const z0 = belt ? zb + 2.2 : zb + 3.2, z1 = belt ? zb + FW - 2.2 : zb + 6.8;
     ctx.fillStyle = C.ink; ctx.globalAlpha *= belt ? 0.85 : 0.5; ctx.fillRect(xa, -z1, xb - xa, z1 - z0);
+  }
+  if (schemeMode) for (const g of order) { // GOST 2.770: a cross where a part is fixed on its shaft
+    if (isShaft(g) || !isVert(g) || g.loose || g.mount || !covered(g) || ty(g, 'carrier', 'ring', 'clutch', 'diff')) continue;
+    dim(g.layer); const zc = g.layer * LP + FW / 2, k = 2.2; ctx.strokeStyle = C.ink; ctx.lineWidth = 1.2 / s; ctx.beginPath(); ctx.moveTo(g.x - k, -zc - k); ctx.lineTo(g.x + k, -zc + k); ctx.moveTo(g.x - k, -zc + k); ctx.lineTo(g.x + k, -zc - k); ctx.stroke();
   }
   ctx.globalAlpha = 1; pipesSide(s);
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);

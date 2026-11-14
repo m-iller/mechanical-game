@@ -7,7 +7,7 @@
 
 // a part loads the drive through a load law set by hand, or as the crank of a mechanism with the mean moment its cycle needs (p.mb)
 const hasLoad = p => !!p.load || p.mb > 0 || !!autoLoad(p), lawOf = p => p.load ? loadOf(p.load) : p.mb > 0 ? () => p.mb : autoLoad(p);
-const ownEta = p => p.load ? (p.load.eta == null ? 1 : p.load.eta) : p.type === 'generator' ? p.ge : p.type === 'hoist' ? HOIST_ETA : 1;
+const ownEta = p => p.load ? (p.load.eta == null ? 1 : p.load.eta) : p.type === 'generator' ? p.ge : p.type === 'hoist' ? HOIST_ETA : p.type === 'conveyor' ? CONV_ETA : 1;
 const isDyn = m => !!m.kind && m.kind !== 'speed';
 const motorDir = m => Math.sign(isDyn(m) ? m.n : m.rpm) || 1;
 let power = { has: false, src: new Map(), load: new Map(), flow: new Map() }, warnings = [];

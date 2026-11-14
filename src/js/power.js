@@ -22,7 +22,8 @@ function solve() {
   warnings = runChecks({ parts, power });
 }
 function solveDrive() {
-  const dyn = parts.filter(p => p.motor && isDyn(p.motor));
+  for (const p of parts) if (p.motor && isDyn(p.motor) && !p.motor.n) p.motor.rpm = 0;   // a motor set to zero speed stands still and holds its train
+  const dyn = parts.filter(p => p.motor && isDyn(p.motor) && p.motor.n);
   for (const p of dyn) p.motor.rpm = p.motor.n;                 // a trial speed, only to read the ratios
   solveKin();
   const ops = new Map();

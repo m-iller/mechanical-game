@@ -2,7 +2,9 @@
    A link's pose is x, y (its first joint) and dir (its angle); joints are points in the link's own frame, in mm.
    pivot and guide are the frame. A crank (tcrank) turns about its first joint with the speed the drive solver gives it,
    from the shaft it is keyed to or from its own motor, so for the linkage it is a frame that moves.
-   Every other link is found each frame from the pair equations (linkage.js), starting from where it stood. */
+   Every other link is found each frame from the pair equations (linkage.js), starting from where it stood.
+   A joint can also be pinned to any turning part of the drive — a gear, a pulley, a flywheel, a shaft: the pair then keeps the
+   pin's place in that part's own frame (q.pa), and the part works as a crank of that radius. On the axis it is a plain hinge. */
 'use strict';
 
 const FOLLOW_L = 34;
@@ -10,11 +12,16 @@ const RIDERS = ['tfollow', 'tfollowr', 'tgeneva', 'tratchet'];   // links placed
 const BAR = ['tcrank', 'trod', 'trocker', 'tcoul', 'hcyl', 'tfollowr'], SLIDES = ['tslider', 'tstone'], RAILS = ['guide', 'tcoul'];
 // links whose pose is given rather than solved: the frame, the driven links, and a follower riding a cam
 const camOf = p => { const q = pairs.find(x => x.type === 'H' && x.b === p.id); return q ? byId(q.a) : null; };
-const linkFixed = p => ty(p, 'pivot', 'guide', 'tcrank', 'tcam') || (RIDERS.includes(p.type) && !!camOf(p));
+const linkFixed = p => !isLink(p) || ty(p, 'pivot', 'guide', 'tcrank', 'tcam') || (RIDERS.includes(p.type) && !!camOf(p));
+// a turning part of the drive that can carry a pin
+const isWheel = p => !isLink(p) && isVert(p);
+const pinR = q => q.pa ? Math.hypot(q.pa[0], q.pa[1]) : 0;
+// the drive parts that work as cranks: they carry at least one pin off their axis
+const pinWheels = () => [...new Set(pairs.filter(q => pinR(q) > 1e-6).map(q => q.a))].map(byId).filter(Boolean);
 // what the cam needs to know about its follower
 const folOf = f => f.type === 'tfollowr' ? { kind: 'rock', rr: f.rr || 0, O: [f.x, f.y], L: f.len, side: f.side || 1 } : f.ft === 'flat' ? { kind: 'flat', dir: f.dir } : { kind: 'roller', rr: f.rr || 0, e: f.e || 0, dir: f.dir };
 const followerOf = c => parts.find(p => ty(p, 'tfollow', 'tfollowr') && camOf(p) === c);
-const linkTh = p => isDriver(p) ? p.dir + (p.w || 0) * (clock + jit) : p.dir || 0;
+const linkTh = p => !isLink(p) ? angle(p) : isDriver(p) ? p.dir + (p.w || 0) * (clock + jit) : p.dir || 0;
 // joints in the link's own frame
 function jointsOf(p) {
   if (BAR.includes(p.type)) return [[0, 0], [p.len, 0]];
@@ -42,11 +49,12 @@ function tmmMech() {
     if (linkFixed(p)) mech.links.push({ id: p.id, ground: true, pose: [p.x, p.y, linkTh(p)] });
     else if (used.has(p.id)) { mech.links.push({ id: p.id }); mech.moving.push(p); mech.q0.push(p.x, p.y, p.dir); }
   }
+  for (const id of new Set(pairs.filter(q => q.pa).map(q => q.a))) { const w = byId(id); if (w) mech.links.push({ id, ground: true, pose: [w.x, w.y, angle(w)] }); }   // drive parts with pins: frames that turn
   for (const q of pairs) {
     const a = byId(q.a), b = byId(q.b); if (!a || !b || (linkFixed(a) && linkFixed(b))) continue;
     if (q.type === 'H') continue;   // a cam places its follower directly, see tmmFollow()
     if (q.type === 'P') mech.pairs.push({ id: q.id, type: 'P', a: a.id, b: b.id, pa: [0, 0], pb: jointsOf(b)[q.jb] || [0, 0], ua: [1, 0], turn: q.turn });
-    else mech.pairs.push({ id: q.id, type: q.type, a: a.id, b: b.id, pa: jointsOf(a)[q.ja] || [0, 0], pb: jointsOf(b)[q.jb] || [0, 0], turn: q.turn });
+    else mech.pairs.push({ id: q.id, type: q.type, a: a.id, b: b.id, pa: q.pa || jointsOf(a)[q.ja] || [0, 0], pb: jointsOf(b)[q.jb] || [0, 0], turn: q.turn });
   }
   return mech;
 }
@@ -78,6 +86,8 @@ function tmmAnalyze() {
   const groups = new Map(), of = new Map();
   for (const p of L) { const r = find(p.id); if (!groups.has(r)) groups.set(r, { ids: [], n: 0, p5: 0, p4: 0, pf: 0, drivers: 0 }); const g = groups.get(r); g.ids.push(p.id); g.n++; of.set(p.id, g); if (isDriver(p)) { g.p5++; g.drivers++; } }
   for (const q of pairs) { const g = of.get(q.a) || of.get(q.b); if (!g) continue; if (q.type === 'F') g.pf++; else if (q.type === 'H') { g.p4++; g.p5++; } else g.p5++; }   // a follower brings its own guide on the frame
+  for (const g of groups.values()) g.wheels = [];
+  for (const q of pairs) if (pinR(q) > 1e-6) { const g = of.get(q.b); if (g && !g.wheels.includes(q.a)) { g.wheels.push(q.a); g.n++; g.p5++; g.drivers++; } }   // a part with a pin is one more moving link on its own hinge, and it is driven
   const out = [...groups.values()].filter(g => g.p5 + g.pf > 0);
   for (const g of out) { g.n -= g.pf; g.W = 3 * g.n - 2 * g.p5 - g.p4; }
   tmmInfo = { ok: tmmStepOk(), groups: out, of };
@@ -86,7 +96,7 @@ function tmmAnalyze() {
    whose freedoms are exactly used up by their pairs (3·n − 2·p5 = 0). Two links with three pairs is a class II group (a dyad),
    four links with six pairs class III. Returns { groups: [{ ids, cls }], left: [ids] } — left is what no group takes. */
 function tmmAssur(g) {
-  const known = new Set(parts.filter(p => isLink(p) && linkFixed(p)).map(p => p.id)), rest = g.ids.filter(id => !known.has(id)), groups = [];
+  const known = new Set(parts.filter(p => linkFixed(p)).map(p => p.id)), rest = g.ids.filter(id => !known.has(id)), groups = [];
   const dof = S => { const In = id => S.has(id), ok = id => S.has(id) || known.has(id); let d = 3 * S.size; for (const q of pairs) if ((In(q.a) && ok(q.b)) || (In(q.b) && ok(q.a))) d -= q.type === 'F' ? 3 : q.type === 'H' ? 1 : 2; return d; };
   const combos = (arr, k, start = 0, cur = []) => k === 0 ? [cur] : arr.slice(start).flatMap((x, i) => combos(arr, k - 1, start + i + 1, [...cur, x]));
   for (let found = true; found && rest.length;) {
@@ -128,6 +138,7 @@ addCheck('linkage', () => {
 /* ---------- making and breaking pairs ---------- */
 const NEAR_MM = 0.6;
 // every joint of every link except those in skip: { p, k, x, y }
+const wheelAt = (pt, layer) => parts.filter(w => isWheel(w) && !w.mount && shown(w) && (isShaft(w) ? covers(w, layer) : w.layer === layer) && Math.hypot(pt.x - w.x, pt.y - w.y) <= Math.max(3, RO(w) - 1)).sort((a, b) => RO(a) - RO(b))[0];
 const allJoints = skip => parts.filter(p => isLink(p) && !skip.has(p.id)).flatMap(p => jointsOf(p).map((_, k) => ({ p, k, ...jointPos(p, k) })));
 // links already hinged together at joint k of p, through any chain of pairs at that point
 function pinMates(p, k) {
@@ -154,6 +165,10 @@ function tmmAttach(ids) {
       const at = jointPos(p, k), mates = pinMates(p, k);
       const hits = allJoints(new Set([p.id])).filter(j => Math.hypot(j.x - at.x, j.y - at.y) < NEAR_MM && !mates.has(j.p.id + ':' + j.k) && !(linkFixed(p) && linkFixed(j.p)));
       if (hits.length) { const j = hits.find(h => linkFixed(h.p)) || hits[0]; made.push(addPair('R', j.p, j.k, p, k)); }
+      else if (!linkFixed(p) && ![...mates].some(m => { const o = byId(+m.split(':')[0]); return o && o !== p && linkFixed(o); })) { // a free joint dropped on a turning part of the drive is pinned to it there
+        const w = wheelAt(at, p.layer);
+        if (w) { const d = Math.hypot(at.x - w.x, at.y - w.y), th = angle(w), c = Math.cos(th), s = Math.sin(th), dx = at.x - w.x, dy = at.y - w.y, q = addPair('R', w, 0, p, k); q.pa = d < 2.5 ? [0, 0] : [+(c * dx + s * dy).toFixed(3), +(-s * dx + c * dy).toFixed(3)]; made.push(q); }
+      }
     });
     if (p.type === 'tfollow' && !camOf(p)) { // a follower dropped beside a cam rides it, pointing away from the cam's centre
       const c = parts.find(o => o.type === 'tcam' && Math.hypot(o.x - p.x, o.y - p.y) < o.r + o.h + (p.rr || 0) + 14);
@@ -189,6 +204,7 @@ function tmmSnap(g, x, y, k, skip, near) {
     if (k != null && i !== k) continue;
     const jx = k != null ? x : x + c * js[i][0] - s * js[i][1], jy = k != null ? y : y + s * js[i][0] + c * js[i][1];
     for (const o of others) { const d = Math.hypot(o.x - jx, o.y - jy); if (d < near && (!best || d < best.d)) best = { d, dx: o.x - jx, dy: o.y - jy }; }
+    if (!best && !linkFixed(g)) for (const w of parts) if (isWheel(w) && !w.mount && shown(w)) { const d = Math.hypot(w.x - jx, w.y - jy); if (d < Math.min(near, 2.5)) best = { d, dx: w.x - jx, dy: w.y - jy }; }   // the axis of a drive part
   }
   if (!best && k == null && SLIDES.includes(g.type)) for (const r of parts) if (RAILS.includes(r.type) && !skip.has(r.id)) {
     const f = onRail(r, { x, y }), [lo, hi] = railSpan(r);

@@ -16,7 +16,12 @@ const cylA1 = p => Math.PI * (p.d / 1000) ** 2 / 4, cylA2 = p => cylA1(p) - Math
 const PORTS = {
   htank: [['T', 0, 0]], hpump: [['S', -11, 0], ['P', 11, 0]], hmotor: [['A', -11, 0], ['B', 11, 0]], hrelief: [['P', -9, 0], ['T', 9, 0]],
   hvalve: [['P', -4, 9], ['T', 4, 9], ['A', -4, -9], ['B', 4, -9]], hthrottle: [['A', -9, 0], ['B', 9, 0]], hcheck: [['A', -9, 0], ['B', 9, 0]], hnode: [['', 0, 0]], haccu: [['P', 0, 9]],
+  hcone: [['A', -9, 0], ['B', 9, 0]], hbend: [['A', -8, 0], ['B', 0, 8]], horif: [['A', -9, 0], ['B', 9, 0]], hgate: [['A', -9, 0], ['B', 9, 0]],
 };
+// fittings: passive pieces of a line, good for liquid and for gas
+const FITS = ['hcone', 'hbend', 'horif', 'hgate'], isFit = p => FITS.includes(p.type);
+const fitOf = p => p.type === 'hcone' ? { kind: 'cone', d1: p.dn / 1000, d2: (p.d2 || p.dn) / 1000, alpha: p.al || 20 } : p.type === 'hbend' ? { kind: 'bend', d: p.dn / 1000, ang: p.ang || 90, rd: p.rd == null ? 1.5 : p.rd } : p.type === 'horif' ? { kind: 'orif', d: p.dn / 1000, d0: Math.min(p.dn, p.d2 || p.dn) / 1000 } : { kind: 'gate', d: p.dn / 1000, open: p.op == null ? 1 : p.op };
+const isLiquid = q => (FLUIDS[q.fluid] || FLUIDS.oil).phase === 'liquid';
 // ports of a part in its own frame: [name, x, y]
 const portsOf = p => T(p).grp === 'heat' ? (p.type === 'tstack' ? [['in', 0, 0]] : TH_PORTS) : ty(p, 'generator', 'heater') ? [['E', p.d / 2 + 3, 0]] : p.type === 'hcyl' ? [['A', 5, 5.5], ['B', CYL_L0(p) - 8, 5.5]] : PORTS[p.type] || [];
 function portPos(p, k) { const q = portsOf(p)[k], th = p.type === 'hcyl' ? linkTh(p) : isHyd(p) || T(p).grp === 'heat' ? p.dir || 0 : 0, c = Math.cos(th), s = Math.sin(th); return { x: p.x + c * q[1] - s * q[2], y: p.y + s * q[1] + c * q[2] }; }
@@ -25,10 +30,25 @@ const pipePath = q => { const a = byId(q.a), b = byId(q.b); return a && b ? [por
 function pipeLen(q) { const P = pipePath(q), a = byId(q.a), b = byId(q.b); let L = Math.abs(a.layer - b.layer) * LP; for (let i = 1; i < P.length; i++) L += Math.hypot(P[i].x - P[i - 1].x, P[i].y - P[i - 1].y); return L / 1000; }
 function addPipe(a, pa, b, pb, opt = {}) { const q = { id: nextId++, a: a.id, pa, b: b.id, pb, pts: opt.pts || [], d: opt.d || 10, kind: opt.kind || 'pressure', fluid: opt.fluid || 'oil', mat: opt.mat || 'steel', ph: 0 }; pipes.push(q); return q; }
 const portKey = (id, k) => id + ':' + k;
+/* The run from the last fixed point L to the pointer C, laid the way a track is routed on a circuit board: a straight stretch and
+   a stretch at 45° ('45'), two stretches at a right angle ('90'), or one straight line ('free'). flip puts the other stretch first.
+   Returns the corner between the two stretches, or null when one stretch is enough. */
+function pipeElbow(L, C, mode, flip) {
+  const dx = C.x - L.x, dy = C.y - L.y, ax = Math.abs(dx), ay = Math.abs(dy), sx = Math.sign(dx), sy = Math.sign(dy), eps = 1e-6;
+  if (mode === 'free' || ax < eps || ay < eps) return null;
+  if (mode === '90') return flip ? { x: L.x, y: C.y } : { x: C.x, y: L.y };
+  if (Math.abs(ax - ay) < eps) return null;
+  const d = Math.min(ax, ay);
+  if (flip) return { x: L.x + sx * d, y: L.y + sy * d };                                  // the 45° stretch first
+  return ax > ay ? { x: C.x - sx * d, y: L.y } : { x: L.x, y: C.y - sy * d };               // the straight stretch first
+}
+const ROUTE_MODES = ['45', '90', 'free'];
+const pipeLast = d => d.pts.length ? { x: d.pts[d.pts.length - 1][0], y: d.pts[d.pts.length - 1][1] } : portPos(byId(d.a), d.pa);
+const portTaken = (id, k) => pipes.some(q => (q.a === id && q.pa === k) || (q.b === id && q.pb === k));
 
 let hyd = { ok: true, has: false, p: new Map(), pipe: new Map(), part: new Map(), pmax: 1e5, x: null, sig: '' };
 function hydroNet() {
-  const oil = pipes.filter(q => isHyd(byId(q.a)) && isHyd(byId(q.b)) && !isWire(q));   // wires and gas lines are not this network's business
+  const oil = pipes.filter(q => isHyd(byId(q.a)) && isHyd(byId(q.b)) && !isWire(q) && isLiquid(q));   // wires and gas lines are not this network's business
   const hp = parts.filter(p => isHyd(p)), nodeOf = new Map(), used = new Set(oil.flatMap(q => [portKey(q.a, q.pa), portKey(q.b, q.pb)]));
   let n = 1; const fixed = { 0: 0 };                                         // node 0 is the tank
   const node = (p, k) => { const key = portKey(p.id, k); if (p.type === 'htank') return 0; if (!nodeOf.has(key)) nodeOf.set(key, n++); return nodeOf.get(key); };
@@ -38,11 +58,12 @@ function hydroNet() {
   // a pipe that meets a pipe of another bore at either end passes through a reducer there
   const ends = q => [[q.a, q.pa], [q.b, q.pb]].filter(([id, k]) => oil.some(o => o !== q && o.d !== q.d && ((o.a === id && o.pa === k) || (o.b === id && o.pb === k)))).length;
   const add = (e, own) => { elems.push(e); owner.push(own); };
-  for (const q of oil) { const a = byId(q.a), b = byId(q.b); add({ k: 'pipe', a: node(a, q.pa), b: node(b, q.pb), d: q.d / 1000, L: Math.max(1e-3, pipeLen(q)), eps: ROUGH[q.mat] || ROUGH.steel, zeta: q.pts.length * ZETA.elbow + ends(q) * ZETA.reducer, fluid: q.fluid }, { pipe: q }); }
+  for (const q of oil) { const a = byId(q.a), b = byId(q.b); add({ k: 'pipe', a: node(a, q.pa), b: node(b, q.pb), d: q.d / 1000, L: Math.max(1e-3, pipeLen(q)), eps: ROUGH[q.mat] || ROUGH.steel, zeta: q.pts.length * ZETA.elbow + ends(q) * ZETA.reducer, fluid: q.fluid, fl: FLUIDS[q.fluid] || FLUIDS.oil }, { pipe: q }); }
   for (const p of hp) {
     const live = portsOf(p).some((_, k) => used.has(portKey(p.id, k))); if (!live) continue;
     if (p.type === 'hpump') add({ k: 'pump', a: toTank(p, 0), b: node(p, 1), Q: p.q * 1e-6 * Math.abs(p.w) / 60 * ETA_V }, { part: p });
     else if (p.type === 'hrelief') add({ k: 'relief', a: node(p, 0), b: toTank(p, 1), pset: p.pset * 1e5 }, { part: p });
+    else if (isFit(p)) add({ k: 'fit', a: node(p, 0), b: node(p, 1), f: fitOf(p) }, { part: p });
     else if (p.type === 'hthrottle') add({ k: 'orifice', a: node(p, 0), b: node(p, 1), A: pipeArea(p.dn / 1000) }, { part: p });
     else if (p.type === 'hcheck') add({ k: 'check', a: node(p, 0), b: node(p, 1), A: pipeArea(p.dn / 1000), pcrack: 0.5e5 }, { part: p });
     else if (p.type === 'hvalve' && p.pos) { const A = pipeArea(p.dn / 1000), [w1, w2] = p.pos > 0 ? [2, 3] : [3, 2]; add({ k: 'orifice', a: node(p, 0), b: node(p, w1), A }, { part: p, path: 'in' }); add({ k: 'orifice', a: node(p, w2), b: toTank(p, 1), A }, { part: p, path: 'out' }); }
@@ -50,7 +71,8 @@ function hydroNet() {
     else if (p.type === 'hmotor') add({ k: 'motor', a: node(p, 0), b: toTank(p, 1), q: p.q * 1e-6 / TAU / ETA_V, M: ((p.M || 0) + ((power.src.get(p.id) || {}).M || 0)) / ETA_M }, { part: p });
   }
   // a cylinder is held only against the stop it is standing on: it may always move away from it. Which way it wants to go is found by solving free first.
-  return { nodes: n, fixed, elems, owner, nodeOf };
+  const name = oil.length ? oil[0].fluid : 'oil', tank = parts.find(p => p.type === 'htank');   // one liquid per network: the first pipe's
+  return { nodes: n, fixed, elems, owner, nodeOf, fluid: FLUIDS[name] || FLUIDS.oil, fluidName: name, T0: tank && tank.T0 != null ? tank.T0 : 40 };
 }
 /* Solve the network. A cylinder on a stop is first tried free; if it would push further into the stop it is held, otherwise it leaves. */
 function hydroStep() {
@@ -70,10 +92,13 @@ function hydroStep() {
     r = hydroSolve(net, null);
   }
   hyd.ok = r.ok; hyd.x = r.x; hyd.sig = sig; hyd.sol = r;
+  const th = hydroHeat(net, r); hyd.heat = th.heat; hyd.T0 = net.T0; hyd.fluid = net.fluid; hyd.fluidName = net.fluidName;
   net.elems.forEach((e, i) => {
     const o = net.owner[i], Q = r.q[i], pa = r.p[e.a], pb = r.p[e.b]; hyd.pmax = Math.max(hyd.pmax, pa, pb);
-    if (o.pipe) { const fl = FLUIDS[o.pipe.fluid] || FLUIDS.oil, L = pipeLoss(e, Q, FLUIDS.oil); hyd.pipe.set(o.pipe.id, { Q, v: L.v, Re: L.Re, lam: L.lam, regime: L.regime, dp: pa - pb, pa, pb, L: e.L, zeta: e.zeta, fast: tooFast(L.v, fl, o.pipe.kind), fl }); return; }
-    const rec = hyd.part.get(o.part.id) || {}; hyd.part.set(o.part.id, rec);
+    const hx = th.info[i], T1 = th.Tn[hx.from], T2 = T1 + hx.dT;
+    if (o.pipe) { const fl = e.fl, L = pipeLoss(e, Q, fl); hyd.pipe.set(o.pipe.id, { T1, T2, Q, v: L.v, Re: L.Re, lam: L.lam, regime: L.regime, dp: pa - pb, pa, pb, L: e.L, zeta: e.zeta, fast: tooFast(L.v, fl, o.pipe.kind), fl }); return; }
+    const rec = hyd.part.get(o.part.id) || {}; hyd.part.set(o.part.id, rec); if (o.path !== 'out') { rec.T1 = T1; rec.T2 = T2; }
+    if (e.k === 'fit') { const L = fittingLoss(e.f, Q, net.fluid); Object.assign(rec, { fit: true, Q, dp: pa - pb, pa, pb, va: L.va, vb: L.vb, vref: L.vref, zeta: L.zeta, mode: L.mode, loss: L.loss, rho: net.fluid.rho }); return; }
     if (e.k === 'pump') { rec.Q = Q; rec.pS = pa; rec.pP = pb; rec.M = Math.max(0, pb - pa) * o.part.q * 1e-6 / TAU / ETA_M; rec.P = (pb - pa) * Q; if (rec.M > 1e-9) o.part.mb = rec.M; }
     else if (e.k === 'cyl') { rec.v = e.stop ? 0 : r.v[i]; rec.pA = pa; rec.pB = pb; rec.held = !!e.stop; rec.Q = e.A1 * rec.v;
       if (Math.abs(rec.v) < 1e-9 && Math.min(pa, pb) < 0) { rec.pA = Math.max(0, e.F / e.A1); rec.pB = Math.max(0, -e.F / e.A2); } }   // shut in on both sides, the split of pressure is not defined: show the load carried on one side
@@ -83,6 +108,28 @@ function hydroStep() {
   });
   let moved = 0; for (const p of parts) if (p.type === 'hpump') { const a = prev.get(p.id), b = p.mb || 0; moved = Math.max(moved, Math.abs(a - b) / Math.max(a, b, 1e-6)); }
   return moved;
+}
+/* Temperatures in a liquid network, steady state. Every pressure loss turns to heat in the liquid that passes: ΔT = Δp / (ρ·c).
+   A pump heats it by its own losses, Δp·(1/η − 1); a motor by Δp·(1 − η); a cylinder does work and adds nothing.
+   The liquid leaves the tank at the tank's temperature (node 0); where streams meet they mix in proportion to their flows.
+   Returns the temperature of every node, per element { from, to, q, dT, loss } and the heat all of it brings back to the tank, W. */
+function hydroHeat(net, r) {
+  const fl = net.fluid || FLUIDS.oil, rc = fl.rho * (HEAT_C[net.fluidName] || HEAT_C.oil), T0 = net.T0 == null ? 40 : net.T0, N = net.nodes, Tn = new Array(N).fill(T0), eta = ETA_V * ETA_M;
+  const info = net.elems.map((e, i) => {
+    const Q = r.q[i], fwd = Q >= 0, dpab = r.p[e.a] - r.p[e.b]; let loss;
+    if (e.k === 'pump') loss = Math.max(0, -dpab) * (1 / eta - 1);
+    else if (e.k === 'cyl') loss = 0;
+    else if (e.k === 'motor') loss = Math.abs(dpab) * (1 - eta);
+    else if (e.k === 'fit') loss = fittingLoss(e.f, Q, fl).loss;
+    else loss = Math.abs(dpab);
+    return { from: fwd ? e.a : e.b, to: fwd ? e.b : e.a, q: Math.abs(fwd ? r.qb[i] : Q), dT: loss / rc, loss };
+  });
+  for (let it = 0; it < 80; it++) {
+    let ch = 0;
+    for (let n = 1; n < N; n++) { let s = 0, h = 0; for (const x of info) if (x.to === n && x.q > 1e-12) { s += x.q; h += x.q * (Tn[x.from] + x.dT); } if (s > 0) { const v = h / s; ch = Math.max(ch, Math.abs(v - Tn[n])); Tn[n] = v; } }
+    if (ch < 1e-7) break;
+  }
+  return { Tn, info, heat: info.reduce((s, x) => s + x.loss * x.q, 0) };
 }
 // the hydraulic motors' speeds, from the last solution, become speed sources for the drive
 function hydLoads() {
@@ -136,11 +183,12 @@ addCheck('hydraulics', () => {
   for (const q of pipes) {
     const r = hyd.pipe.get(q.id), a = byId(q.a), b = byId(q.b), name = `${a.name}–${b.name}`, fl = FLUIDS[q.fluid] || FLUIDS.oil;
     if (isWire(q)) continue;
-    if (fl.phase !== 'liquid' && [a, b].some(p => isHyd(p) && p.type !== 'hnode')) out.push({ level: 'error', code: 'w.pipeGas', text: t('w.pipeGas', { a: name }), ids: [a.id, b.id] });
+    if (fl.phase !== 'liquid' && [a, b].some(p => isHyd(p) && p.type !== 'hnode' && !isFit(p))) out.push({ level: 'error', code: 'w.pipeGas', text: t('w.pipeGas', { a: name }), ids: [a.id, b.id] });
     if (r && hyd.ok && r.fast) out.push({ level: 'warn', code: 'w.pipeFast', text: t('w.pipeFast', { a: name, v: fmtNum(Math.abs(r.v), 3), m: fl.vmax[q.kind] || fl.vmax.pressure }), ids: [a.id, b.id] });
   }
   if (hyd.ok) for (const p of parts) {
     const r = hyd.part.get(p.id); if (!r) continue;
+    if (r.fit && Math.min(r.pa, r.pb) < -0.9e5) out.push({ level: 'warn', code: 'w.fitCavit', text: t('w.fitCavit', { a: p.name, p: fmtNum(-Math.min(r.pa, r.pb) / 1e5, 2) }), ids: [p.id] });
     if (p.type === 'hpump' && r.pS < -0.6e5) out.push({ level: 'warn', code: 'w.cavit', text: t('w.cavit', { a: p.name, p: fmtNum(r.pS / 1e5, 2) }), ids: [p.id] });
     if (p.type === 'hcyl' && Math.min(r.pA, r.pB) < -0.9e5) out.push({ level: 'warn', code: 'w.hydNeg', text: t('w.hydNeg', { a: p.name }), ids: [p.id] });
     if (p.type === 'hrelief' && r.Q > 1e-7) out.push({ level: 'info', code: 'w.relief', text: t('w.relief', { a: p.name, q: fmtNum(r.Q * 60000, 3) }), ids: [p.id] });

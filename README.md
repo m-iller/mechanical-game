@@ -70,6 +70,11 @@ The branch `engineering-tool` turns the sandbox into a tool for quick estimates,
 - **Layers**: add, delete, reorder, hide, lock, name. Only the active layer takes the pointer; the others are faded and let clicks through.
 - **Side view**: drag a part along x and up or down between layers, pull a shaft by its ends, click a layer's letter to make it active.
 - Space pauses. R rotates the selection. Delete removes it. Ctrl+D duplicates. Scroll or pinch to zoom.
+- **Ctrl+Z** undoes, **Ctrl+Shift+Z** or **Ctrl+Y** redoes (200 steps). **Ctrl+C / Ctrl+X / Ctrl+V** copy, cut and paste the selection with its belts, pairs and pipes; the copy lands under the pointer.
+- **Figures** are not written on the sheet: every part and pipe has a small ring next to it. Click the ring for a window with its speed, torque, power, pressure, flow, temperature. Windows can be moved by the heading, resized by the corner, and several can stay open. The "Labels" button brings the old line of figures back.
+- **Window**: drag the border between the sheet and the panel, and the border between the side view and the top view (double-click puts it back). A panel section folds under its heading.
+- **Pipes** are routed like tracks on a circuit board: click a free port (or press X over it), the run follows the pointer with one straight and one 45° stretch, a click fixes it. `/` flips the bend, Shift+Space switches between 45°, 90° and any angle, Backspace takes back the last point, Esc cancels.
+- **A joint of a linkage** dropped on a gear, pulley, flywheel or any other turning part is pinned to it there: the part then works as a crank of that radius. Dropped on the axis it is a plain hinge.
 
 Your bench is saved automatically between sessions.
 

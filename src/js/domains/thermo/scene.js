@@ -16,10 +16,19 @@ const gasOf = (p, k) => GAS_OF[p.type] || 'air';
 // the pipe on a port and what is at its other end
 function hopFrom(p, k) { const q = pipes.find(x => !isWire(x) && ((x.a === p.id && x.pa === k) || (x.b === p.id && x.pb === k))); if (!q) return null; const fwd = q.a === p.id && q.pa === k; return { q, fwd, p: byId(fwd ? q.b : q.a), k: fwd ? q.pb : q.pa }; }
 // loss of a gas line carrying m kg/s at pressure p and temperature Tk; Rg is the gas constant
+const gasFluid = (p, Tk, Rg, hot) => { const rho = p / (Rg * Tk); return { rho, nu: 1.8e-5 * (Tk / 288) ** 0.7 / rho, vmax: { pressure: hot ? 40 : 25 } }; };
+const gasK = Rg => Rg > 400 ? GAS.steam.k : Rg > 287.5 ? GAS.flue.k : GAS.air.k;
 function gasLine(hop, m, p, Tk, Rg, hot) {
-  const q = hop.q, rho = p / (Rg * Tk), fl = { rho, nu: 1.8e-5 * (Tk / 288) ** 0.7 / rho, vmax: { pressure: hot ? 40 : 25 } }, Qv = m / rho;
+  const q = hop.q, fl = gasFluid(p, Tk, Rg, hot), rho = fl.rho, Qv = m / rho;
   const e = { d: q.d / 1000, L: Math.max(1e-3, pipeLen(q)), eps: ROUGH[q.mat] || ROUGH.steel, zeta: q.pts.length * ZETA.elbow }, L = pipeLoss(e, Qv, fl), sg = hop.fwd ? 1 : -1;
-  return { gas: true, Q: sg * Qv, m, v: L.v, va: sg * Math.min(3, 0.3 + L.v / 25), Re: L.Re, lam: L.lam, regime: L.regime, dp: L.dp, pa: hop.fwd ? p : p - L.dp, pb: hop.fwd ? p - L.dp : p, L: e.L, zeta: e.zeta, fl, fast: tooFast(L.v, fl), T: Tk };
+  return { gas: true, Q: sg * Qv, m, v: L.v, va: sg * Math.min(3, 0.3 + L.v / 25), Re: L.Re, lam: L.lam, regime: L.regime, dp: L.dp, pa: hop.fwd ? p : p - L.dp, pb: hop.fwd ? p - L.dp : p, L: e.L, zeta: e.zeta, fl, fast: tooFast(L.v, fl), T: Tk, rho, Ma: Math.abs(L.v) / soundSpeed(gasK(Rg), Rg, Tk) };
+}
+/* A fitting in a gas line, for the gas as it arrives (pressure p, temperature Tk) at port k. The density is taken as constant across
+   the fitting — fair while the Mach number stays under about 0.3. The static temperature follows the speed: cp·T + v²/2 is kept. */
+function gasFit(n, k, m, p, Tk, Rg, hot) {
+  const fl = gasFluid(p, Tk, Rg, hot), Qv = m / fl.rho, sg = k === 0 ? 1 : -1, L = fittingLoss(fitOf(n), sg * Qv, fl), v1 = Math.abs(sg > 0 ? L.va : L.vb), v2 = Math.abs(sg > 0 ? L.vb : L.va), cp = gasK(Rg) * Rg / (gasK(Rg) - 1), a = soundSpeed(gasK(Rg), Rg, Tk);
+  const drop = sg * L.dp, T2 = Tk + (v1 * v1 - v2 * v2) / (2 * cp);
+  return { fit: true, gas: true, m, Q: Qv, p1: p, p2: p - drop, dp: drop, T1k: Tk, T2k: T2, v1, v2, vref: L.vref, zeta: L.zeta, mode: L.mode, loss: L.loss, rho: fl.rho, Ma: Math.max(v1, v2) / a };
 }
 let thermo = { part: new Map(), pipe: new Map() };
 function turbineMotor(tb, P, wd) { tb.motor = { kind: wd ? 'torque' : 'power', P: Math.max(0, P), n: tb.nmax || 12000, rpm: (tb.motor && tb.motor.rpm < 0 ? -1 : 1) * (tb.nmax || 12000), tq: wd ? Math.max(1e-6, P / wd) : 1, auto: true }; if (tb.motor.rpm < 0) tb.motor.n = -tb.motor.n; }
@@ -34,6 +43,7 @@ function thermoStep(final) {
     while (hop && hop.p) {
       const line = gasLine(hop, m, st.p, st.T, st.R, st.hot); thermo.pipe.set(hop.q.id, line); st.p -= line.dp;
       const n = hop.p;
+      if (isFit(n)) { const f = gasFit(n, hop.k, m, st.p, st.T, st.R, st.hot); thermo.part.set(n.id, f); st = { ...st, p: f.p2, T: f.T2k }; hop = hopFrom(n, 1 - hop.k); continue; }
       if (n.type === 'tburn' && hop.k === 0) { const T3 = n.T3 + 273.15, q = g.cp * (T3 - st.T); thermo.part.set(n.id, { m, Tin: st.T, T3, q, Q: m * q, pin: st.p }); rec.q = q; st = { p: st.p * 0.97, T: T3, R: g.R, hot: true }; hop = hopFrom(n, 1); }
       else if (n.type === 'tturb' && hop.k === 0) {
         const etaT = n.etaT || 0.88, out = hopFrom(n, 1), ex = (g.k - 1) / g.k; let p4 = P_ATM, T4 = 0, T4s = 0, exh = null;
@@ -65,8 +75,11 @@ function stageOfTurbine(tb) {
 }
 addCheck('heat', () => {
   const out = [];
+  for (const [id, r] of thermo.pipe) if (r.Ma > 0.3) { const q = pipes.find(x => x.id === id), a = byId(q.a), b = byId(q.b); out.push({ level: 'warn', code: 'w.mach', text: t('w.mach', { a: `${a.name}–${b.name}`, m: fmtNum(r.Ma, 2) }), ids: [a.id, b.id] }); }
+  for (const [id, r] of thermo.part) if (r.fit && r.Ma > 0.3) { const p = byId(id); out.push({ level: 'warn', code: 'w.mach', text: t('w.mach', { a: p.name, m: fmtNum(r.Ma, 2) }), ids: [id] }); }
   for (const [id, r] of thermo.pipe) if (r.fast) { const q = pipes.find(x => x.id === id), a = byId(q.a), b = byId(q.b); out.push({ level: 'warn', code: 'w.pipeFast', text: t('w.pipeFast', { a: `${a.name}–${b.name}`, v: fmtNum(Math.abs(r.v), 3), m: r.fl.vmax.pressure }), ids: [a.id, b.id] }); }
   for (const p of parts) {
+    if (p.type === 'hcone' && p.al > 14 && p.al < 40) { const r = hyd.part.get(p.id) || thermo.part.get(p.id); if (r && r.mode === 'diffuser' && Math.abs(r.Q) > 1e-9) out.push({ level: 'info', code: 'w.diffSep', text: t('w.diffSep', { a: p.name, d: p.al }), ids: [p.id] }); }
     if (p.type === 'tcomp' && !thermo.part.get(p.id).turb) out.push({ level: 'info', code: 'w.noTurbine', text: t('w.noTurbine', { a: p.name }), ids: [p.id] });
     if (p.type === 'tturb') {
       const r = thermo.part.get(p.id), st = stageOfTurbine(p); if (!r) { out.push({ level: 'info', code: 'w.noSteam', text: t('w.noSteam', { a: p.name }), ids: [p.id] }); continue; }

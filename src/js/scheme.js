@@ -184,6 +184,10 @@ function hydDraw(g, s) {
       break;
     }
     case 'hthrottle': seg(-9, 0, 9, 0); ctx.lineWidth = w; ctx.beginPath(); ctx.arc(0, -7.5, 5.2, 0.25 * Math.PI, 0.75 * Math.PI); ctx.stroke(); ctx.beginPath(); ctx.arc(0, 7.5, 5.2, 1.25 * Math.PI, 1.75 * Math.PI); ctx.stroke(); arrow(-5, 5, 5, -5); break;
+    case 'hcone': { const dm = Math.max(g.dn, g.d2 || g.dn), h1 = Math.max(2, 6.5 * g.dn / dm), h2 = Math.max(2, 6.5 * (g.d2 || g.dn) / dm); ctx.lineWidth = w; ctx.beginPath(); ctx.moveTo(-9, -h1); ctx.lineTo(-5, -h1); ctx.lineTo(5, -h2); ctx.lineTo(9, -h2); ctx.moveTo(-9, h1); ctx.lineTo(-5, h1); ctx.lineTo(5, h2); ctx.lineTo(9, h2); ctx.stroke(); ctx.lineWidth = thin; ctx.setLineDash(CHAINLINE(s)); ctx.beginPath(); ctx.moveTo(-9, 0); ctx.lineTo(9, 0); ctx.stroke(); ctx.setLineDash([]); break; }
+    case 'hbend': ctx.lineWidth = w; ctx.beginPath(); ctx.arc(-8, 8, 8, -Math.PI / 2, 0); ctx.stroke(); ctx.lineWidth = thin; ctx.beginPath(); ctx.arc(-8, 8, 11, -Math.PI / 2, 0); ctx.arc(-8, 8, 5, 0, -Math.PI / 2, true); ctx.closePath(); ctx.stroke(); break;
+    case 'horif': seg(-9, 0, 9, 0); seg(0, -7, 0, -2.2, w * 1.3); seg(0, 2.2, 0, 7, w * 1.3); seg(-9, -7, 9, -7, thin); seg(-9, 7, 9, 7, thin); break;
+    case 'hgate': { seg(-9, 0, -6, 0); seg(6, 0, 9, 0); ctx.lineWidth = w; ctx.beginPath(); ctx.moveTo(-6, -4.5); ctx.lineTo(-6, 4.5); ctx.lineTo(6, -4.5); ctx.lineTo(6, 4.5); ctx.closePath(); ctx.fillStyle = (g.op == null ? 1 : g.op) < 0.2 ? C.ink : C.paper; ctx.fill(); ctx.stroke(); seg(0, 0, 0, -8, thin * 1.3); seg(-3.5, -8, 3.5, -8, w); break; }
     case 'hcheck': seg(-9, 0, -1.6, 0); seg(3.4, 0, 9, 0); seg(-4.5, -3.6, -0.6, -1.3, thin * 1.3); seg(-4.5, 3.6, -0.6, 1.3, thin * 1.3); ctx.beginPath(); ctx.arc(1.2, 0, 2.2, 0, TAU); ctx.fillStyle = C.paper; ctx.fill(); ctx.lineWidth = w; ctx.stroke(); break;
     case 'hnode': ctx.beginPath(); ctx.arc(0, 0, 1.9, 0, TAU); ctx.fill(); break;
     case 'haccu': seg(0, 9, 0, 6); ctx.beginPath(); ctx.moveTo(-4, 6); ctx.lineTo(4, 6); ctx.lineTo(4, -4); ctx.arc(0, -4, 4, 0, Math.PI, true); ctx.closePath(); ctx.fillStyle = C.paper; ctx.fill(); ctx.lineWidth = w; ctx.stroke(); seg(-4, 0, 4, 0, thin); ctx.fillStyle = col; ctx.beginPath(); ctx.moveTo(0, -3); ctx.lineTo(-1.8, -6); ctx.lineTo(1.8, -6); ctx.closePath(); ctx.fill(); break;
@@ -225,8 +229,13 @@ function pipesDraw(layer, s) {
     ctx.restore();
   }
   if (pipeDraft && pipeDraft.a != null && byId(pipeDraft.a).layer === layer) { // the pipe being laid
-    const a = portPos(byId(pipeDraft.a), pipeDraft.pa), P = [a, ...pipeDraft.pts.map(v => ({ x: v[0], y: v[1] })), ...(pipeDraft.cur ? [pipeDraft.cur] : [])];
-    ctx.save(); ctx.strokeStyle = C.select; ctx.lineWidth = 2 / s; ctx.setLineDash([5 / s, 3 / s]); ctx.beginPath(); P.forEach((v, i) => i ? ctx.lineTo(v.x, v.y) : ctx.moveTo(v.x, v.y)); ctx.stroke(); ctx.restore();
+    const d = pipeDraft, a = portPos(byId(d.a), d.pa), P = [a, ...d.pts.map(v => ({ x: v[0], y: v[1] }))], last = P[P.length - 1], cur = d.cur, e = cur && pipeElbow(last, cur, layout.route || '45', d.flip);
+    const line = Q => { ctx.beginPath(); Q.forEach((v, i) => i ? ctx.lineTo(v.x, v.y) : ctx.moveTo(v.x, v.y)); ctx.stroke(); };
+    ctx.save(); ctx.strokeStyle = C.select; ctx.lineJoin = 'round'; ctx.lineWidth = 2.4 / s; line(P);                       // what is already fixed
+    if (cur) { ctx.lineWidth = 2 / s; ctx.setLineDash([5 / s, 3 / s]); line([last, ...(e ? [e] : []), cur]); ctx.setLineDash([]);   // what the next click will fix
+      if (cur.port) { ctx.lineWidth = 1.6 / s; ctx.beginPath(); ctx.arc(cur.x, cur.y, 4.5 / s + 1.5, 0, TAU); ctx.stroke(); } }
+    ctx.fillStyle = C.select; for (const v of P.slice(1)) { ctx.beginPath(); ctx.arc(v.x, v.y, 2.2 / s, 0, TAU); ctx.fill(); }
+    ctx.restore();
   }
 }
 // pipes in the side view: from port to port across the layers

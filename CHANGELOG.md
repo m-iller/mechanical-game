@@ -1,6 +1,6 @@
 # Changelog
 
-## 3.0.0-beta.1 (branch `engineering-tool`, not released yet)
+## 3.0.0
 
 Gear Bench is growing from a drive sandbox into a rough-figures tool for mechanical engineering. Plan and status: `docs/ROADMAP.md`, `docs/PROGRESS.md`.
 
@@ -39,6 +39,14 @@ Gear Bench is growing from a drive sandbox into a rough-figures tool for mechani
 - **Flat-faced and swinging cam followers**, with the cam surface, pressure angle and curvature worked out for each. Template "Cam with a swinging follower".
 - **Pipe corners can be dragged** in the top view; dragging a straight run of a picked pipe makes a corner, and a corner put back in line goes away.
 - Side view in scheme mode draws shafts as lines and bearings as two dashes.
+- **Undo and redo** (Ctrl+Z, Ctrl+Shift+Z / Ctrl+Y) and **copy, cut, paste** (Ctrl+C / X / V) of the selection together with its belts, pairs and pipes.
+- **Resizable window**: the border between the sheet and the panel and the one between the two views can be dragged; panel sections fold; the explanation box and the info windows can be moved and resized.
+- **Info windows**: a ring by every part and pipe opens a window with its figures; the sheet itself carries only names. The "Labels" button shows the figures on the sheet as before.
+- **Joints on drive parts**: a link joint dropped on a gear, pulley, flywheel, shaft or any other turning part is pinned there; a part with a pin off its axis drives the mechanism as a crank and takes its load. Template "Slider-crank on a gear".
+- **Any motor can stand still**: zero speed is allowed for every kind of source.
+- **Pipes routed like board tracks**: start from a port, a live bend at 45° or 90° follows the pointer, `/` flips it, Backspace steps back.
+- **Fittings** for liquid and gas lines: cone (a confuser or a diffuser by the direction of flow, with the static pressure following Bernoulli), bend, orifice plate, gate valve — coefficients after Idelchik and Weisbach. Template "Water line with fittings (Venturi)".
+- **Temperature of the liquid** along the network (every pressure loss turns to heat) and the heat the system brings back to the tank; for gas lines the temperature, density and Mach number, with a warning above M = 0.3.
 
 ### Changed
 - Scenes are saved in format v5. Scenes from 2.x and earlier 3.0 builds open and are migrated on load.

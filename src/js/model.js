@@ -73,6 +73,11 @@ const TYPES = {
   hvalve:   { pre: 'DV', grp: 'hyd', key: 'dn',   lim: [1, 40, 0.5], def: 6, dir: 1 },              // 4/3 directional valve, nominal bore, mm
   hthrottle:{ pre: 'TH', grp: 'hyd', key: 'dn',   lim: [0.2, 30, 0.1], def: 2, dir: 1 },            // orifice diameter, mm
   hcheck:   { pre: 'CV', grp: 'hyd', key: 'dn',   lim: [1, 40, 0.5], def: 6, dir: 1 },
+  // fittings for liquid and gas lines; dn is the bore at port A, mm
+  hcone:    { pre: 'CN', grp: 'hyd', key: 'dn',   lim: [2, 1000, 0.5], def: 20, dir: 1 },           // confuser or diffuser, by the way the flow goes: bore dn at A, d2 at B, full angle al
+  hbend:    { pre: 'BD', grp: 'hyd', key: 'dn',   lim: [2, 1000, 0.5], def: 20, dir: 1 },           // bend: turn ang, relative radius rd = R/d
+  horif:    { pre: 'OP', grp: 'hyd', key: 'dn',   lim: [2, 1000, 0.5], def: 20, dir: 1 },           // orifice plate of bore d2 in a pipe of bore dn
+  hgate:    { pre: 'GV', grp: 'hyd', key: 'dn',   lim: [2, 1000, 0.5], def: 20, dir: 1 },           // gate valve, opened to the share op
   hnode:    { pre: 'J',  grp: 'hyd' },
   haccu:    { pre: 'AC', grp: 'hyd', dir: 1 },                                                      // accumulator: holds the line's pressure; in steady state nothing flows into it                                                               // tee: a point where pipes meet
   hcyl:     { pre: 'CY', grp: 'hyd', key: 'd',    lim: [10, 400, 1], def: 40, key2: 'st', lim2: [10, 1500], dir: 1 },   // bore and stroke, mm
@@ -94,9 +99,10 @@ const GROUPS = ['io', 'gears', 'flex', 'shafts', 'tmm', 'hyd', 'heat', 'mech'];
 const DEFAULTS = { emotor: { motor: { kind: 'induction', P: 370, n: 1320, ks: 2.2, km: 2.2, rpm: 1320, tq: 2.7 } }, machine: { load: { kind: 'const', tq: 2, n: 1000, eta: 0.9 } },
   engine: { motor: { kind: 'ice', tq: 100, n: 5000, rpm: 3000 }, eD: 80, eS: 90, eps: 9.5, cyl: 4, ekind: 'otto', thr: 1 }, hand: { motor: { kind: 'torque', tq: 12, n: 60, rpm: 60 } },
   weight: { m: 20, motor: { kind: 'torque', tq: 4, n: 3000, rpm: 100 } }, spring: { M: 2, motor: { kind: 'torque', tq: 2, n: 3000, rpm: 100 } },
+  hcone: { d2: 10, al: 20 }, hbend: { ang: 90, rd: 1.5 }, horif: { d2: 10 }, hgate: { op: 1 }, htank: { T0: 40 },
   tcomp: { mf: 1, etaC: 0.85 }, tturb: { etaT: 0.88, a1: 16, zst: 1, rho: 0, nmax: 12000 }, tboil: { mf: 1, Tb: 350 },
   generator: { Pn: 3000, nn: 3000, ge: 0.9 }, heater: { hm: 2, hk: 5 }, hoist: { m: 50 }, conveyor: { F: 1000, len: 160 }, carrier: { n: 3 }, tplate: { n: 3 }, tcam: { h: 8 }, tfollowr: { rr: 4 }, hcyl: { st: 60, s: 0, F: 0 }, hvalve: { pos: 0 }, crank: { l: 40 }, ring: { loose: true }, clutch: { on: true }, brake: { on: true }, ratchet: { on: false } };
-const PROPS = ['z', 'zw', 'd', 'r', 'n', 'l', 'h', 'len', 'l0', 'l1', 'dir', 'on', 'loose', 'held', 'label', 'F', 'fw', 'm', 'J', 'rr', 'law', 'b1', 'bd', 'b2', 'q', 'pset', 'dn', 'pos', 'st', 's', 'dr', 'M', 'Fb', 'Pn', 'nn', 'ge', 'hm', 'hk', 'eD', 'eS', 'eps', 'cyl', 'ekind', 'thr', 'e', 'grav', 'ft', 'side', 'sg', 'pr', 'mf', 'nd', 'etaC', 'T3', 'dm', 'etaT', 'a1', 'zst', 'rho', 'nmax', 'pb', 'Tb', 'pk'];
+const PROPS = ['z', 'zw', 'd', 'r', 'n', 'l', 'h', 'len', 'l0', 'l1', 'dir', 'on', 'loose', 'held', 'label', 'F', 'fw', 'm', 'J', 'rr', 'law', 'b1', 'bd', 'b2', 'q', 'pset', 'dn', 'pos', 'st', 's', 'dr', 'M', 'Fb', 'Pn', 'nn', 'ge', 'hm', 'hk', 'eD', 'eS', 'eps', 'cyl', 'ekind', 'thr', 'e', 'grav', 'ft', 'side', 'sg', 'pr', 'mf', 'nd', 'etaC', 'T3', 'dm', 'etaT', 'a1', 'zst', 'rho', 'nmax', 'pb', 'Tb', 'pk', 'd2', 'al', 'ang', 'rd', 'op', 'T0'];
 const MOTOR_KEYS = ['kind', 'rpm', 'tq', 'P', 'n', 'ks', 'km'], LOAD_KEYS = ['kind', 'tq', 'n', 'eta', 'table'];
 const pickKeys = (o, keys) => { const r = {}; for (const k of keys) if (o[k] != null) r[k] = Array.isArray(o[k]) ? o[k].map(x => Array.isArray(x) ? x.slice() : x) : o[k]; return r; };
 
@@ -152,7 +158,7 @@ const RO = p => {
     case 'ring': return M * meshZ(p) / 2;
     case 'pulley': case 'fric': case 'flywheel': case 'clutch': case 'brake': case 'emotor': case 'machine': case 'engine': case 'hand': case 'weight': case 'spring': case 'generator': case 'heater': case 'hoist': case 'conveyor': return p.d / 2;
     case 'sprocket': return p.z * CP / TAU;
-    case 'htank': case 'hpump': case 'hmotor': case 'hrelief': case 'hthrottle': case 'hcheck': return 9;
+    case 'htank': case 'hpump': case 'hmotor': case 'hrelief': case 'hthrottle': case 'hcheck': case 'hcone': case 'hbend': case 'horif': case 'hgate': return 9;
     case 'hvalve': return 18;
     case 'tcomp': case 'tburn': case 'tturb': case 'tboil': case 'tcond': case 'tfeed': case 'tstack': return 10;
     case 'hnode': return 2.5;
@@ -322,4 +328,5 @@ function load(d) {
   layerNames = ls.map(L => L.name || ''); soloActive = !!d.solo; schemeMode = d.scheme !== false; sel = new Set(); linkDraft = null; activeLayer = 0; clock = 0;
 }
 const STORE = 'gear-bench-5';
-function save() { try { localStorage.setItem(STORE, JSON.stringify(serialize())); } catch (e) {} }
+let saveHook = null;   // the panel keeps its undo history through this
+function save() { const s = JSON.stringify(serialize()); try { localStorage.setItem(STORE, s); } catch (e) {} if (saveHook) saveHook(s); }

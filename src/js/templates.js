@@ -63,6 +63,16 @@ const TEMPLATES = {
     const g = addPart('guide', { x: x + 75, y, layer: L, len: 110, dir: 0 }), sl = addPart('tslider', { x: xs, y, layer: L, dir: 0 });
     tmmAttach([rod.id, sl.id]); return [c, rod, g, sl];
   } },
+  /* crank press: motor, belt, flywheel on the crank shaft, then crank, rod and ram built from links.
+     The ram meets 4 kN over the last quarter of its downward stroke; the flywheel carries the peak. */
+  press: { layers: 3, build(x, y, L) {
+    const out = [addPart('emotor', { x: x - 110, y, layer: L }), addPart('shaft', { x: x - 110, y, l0: L, l1: L + 1 }), addPart('flywheel', { x, y, layer: L, d: 120, J: 0.6 })];
+    const p1 = addPart('pulley', { x: x - 110, y, layer: L + 1, d: 24 }), p2 = addPart('pulley', { x, y, layer: L + 1, d: 96 }); addLink('belt', [p1.id, p2.id]);
+    out.push(p1, p2, addPart('shaft', { x, y, l0: L, l1: L + 2 }));
+    const c = addPart('tcrank', { x, y, layer: L + 2, len: 20, dir: -Math.PI / 2 }), rod = addPart('trod', { x, y: y - 20, layer: L + 2, len: 90, dir: Math.PI / 2 });
+    const g = addPart('guide', { x, y: y + 80, layer: L + 2, len: 70, dir: Math.PI / 2 }), ram = addPart('tslider', { x, y: y + 70, layer: L + 2, dir: Math.PI / 2, F: 4000, fw: 0.25, m: 5 });
+    tmmAttach([rod.id, ram.id]); out.push(c, rod, g, ram); return out;
+  } },
   // four-bar: crank 20, coupler 70, rocker 50, frame 80 — a crank-rocker by Grashof's rule
   fourbar: { layers: 1, build(x, y, L) {
     const a = 20, b = 70, c = 50, d = 80, B = { x, y: y - a }, dx = x + d - B.x, dy = y - B.y, f = Math.hypot(dx, dy), k = (b * b - c * c + f * f) / (2 * f), h = Math.sqrt(b * b - k * k);

@@ -59,7 +59,7 @@ const TYPES = {
 const GROUPS = ['io', 'gears', 'flex', 'shafts', 'tmm', 'mech'];
 // a small catalogue motor (0.37 kW, 4 poles) and a machine that takes a constant 2 N·m
 const DEFAULTS = { emotor: { motor: { kind: 'induction', P: 370, n: 1320, ks: 2.2, km: 2.2, rpm: 1320, tq: 2.7 } }, machine: { load: { kind: 'const', tq: 2, n: 1000, eta: 0.9 } }, carrier: { n: 3 }, tplate: { n: 3 }, crank: { l: 40 }, ring: { loose: true }, clutch: { on: true }, brake: { on: true }, ratchet: { on: false } };
-const PROPS = ['z', 'zw', 'd', 'r', 'n', 'l', 'h', 'len', 'l0', 'l1', 'dir', 'on', 'loose', 'held', 'label'];
+const PROPS = ['z', 'zw', 'd', 'r', 'n', 'l', 'h', 'len', 'l0', 'l1', 'dir', 'on', 'loose', 'held', 'label', 'F', 'fw', 'm', 'J'];
 const MOTOR_KEYS = ['kind', 'rpm', 'tq', 'P', 'n', 'ks', 'km'], LOAD_KEYS = ['kind', 'tq', 'n', 'eta', 'table'];
 const pickKeys = (o, keys) => { const r = {}; for (const k of keys) if (o[k] != null) r[k] = Array.isArray(o[k]) ? o[k].map(x => Array.isArray(x) ? x.slice() : x) : o[k]; return r; };
 

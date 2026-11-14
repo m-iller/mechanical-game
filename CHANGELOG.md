@@ -17,6 +17,9 @@ Gear Bench is growing from a drive sandbox into a rough-figures tool for mechani
 - Calculation core without DOM in `src/js/core/` (units, explanations, warnings, energy ports, scene migrations, load characteristics) and tests: `npm test`.
 
 - **Mechanisms from separate links**: frame hinge and guide, crank, connecting rod, rocker, slider, slotted link, sliding block, link with several joints. Kinematic pairs appear when a joint is dropped on a joint or a slider on a guide, and go when the link is pulled away; a pair can be made fixed or removed in the panel. The crank sits on a shaft or has its own motor. Mobility by Chebyshev's formula with warnings for an under- or over-constrained chain. Templates "Slider-crank from links" and "Four-bar linkage".
+- **Analysis over one turn of the crank**: graphs of travel, speed and acceleration (or angle, angular speed and acceleration) for the picked link with a marker at the current position, joint paths on the bench, stroke and peak values, Grashof's rule for a four-bar.
+- **Forces**: a resisting force on a slider over part of its stroke, link masses, the moment the crank needs over the turn (kinetostatics), and its mean as a load on the drive.
+- **Flywheel**: excess work, speed fluctuation δ for the flywheels on the crank shaft, and the inertia needed for δ = 1/20. Template "Crank press with flywheel".
 
 ### Changed
 - Scenes are saved in format v3. Scenes from 2.x open and are migrated on load.

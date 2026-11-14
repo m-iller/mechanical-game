@@ -79,6 +79,12 @@ pr = await page.evaluate(() => pairs.map(q => q.type).sort().join());
 if (pr !== 'R') fail('pairs after pulling the slider away: ' + pr);
 await page.evaluate(() => { viewMode = 'both'; running = true; });
 
+// press demo: runs, and the ram shows its graphs
+await page.evaluate(() => { resetScene(3); const m = insertTemplate('press', 0, 0); solve(); fit(); setActive(2); pick([m[m.length - 1].id]); });
+await page.waitForTimeout(300);
+s = await state(); if (s.lock || s.warnings.some(w => w[0] !== 'info')) fail('press demo: ' + s.lock + JSON.stringify(s.warnings));
+if (await page.locator('canvas.graphs').count() !== 1 || await page.evaluate(() => tmmStuck)) fail('press demo: no graphs, or the mechanism is stuck');
+
 // power balance: the conveyor demo runs, shows explained figures, and the "where from" box opens
 await page.evaluate(() => { resetScene(5); const m = insertTemplate('conveyor', 0, 0); solve(); fit(); pick([m[m.length - 1].id]); });
 await page.waitForTimeout(60);

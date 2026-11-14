@@ -45,7 +45,7 @@ function linkRows(p) {
     [t('io.W'), `${g.W}`, ex('W', g.W, '', 'W = 3·n − 2·p₅ − p₄', [['n', g.n, ''], ['p₅', g.p5, ''], ['p₄', 0, '']], ['ex.cheb'])]];
 }
 function specRows(p) {
-  if (isLink(p)) return p.type === 'tcrank' ? [...linkRows(p), [t('sp.n'), rpmText(p.w)]] : linkRows(p);
+  if (isLink(p)) return [...linkRows(p), ...(p.type === 'tcrank' ? [[t('sp.n'), rpmText(p.w)]] : []), ...tmmCycleRows(p)];
   const r = [], add = (k, v) => r.push([t(k), v]), z = p.z, d = pitchD(p), o = outOf(p);
   const mates = meshes.filter(m => m.a === p || m.b === p);
   switch (p.type) {
@@ -107,7 +107,7 @@ function ioRows() {
   return rows;
 }
 // rows are [label, value] or [label, value, explanation]; a value with an explanation opens the "where from" box when clicked
-let why = null, whySeen = false, tmmStuck = false;
+let why = null, whySeen = false, tmmStuck = false, graphTick = null, frameNo = 0;
 const fillDl = (dl, rows) => {
   dl.textContent = '';
   for (const [k, v, e] of rows) {
@@ -251,7 +251,7 @@ function renderSel() {
   const key = JSON.stringify([lang, layerCount, linkDraft && [linkDraft.kind, linkDraft.ids], outId, links.map(L => [L.ids, L.crossed]), ps.map(q => [q.id, q.type, q.layer, q.on, q.held, q.loose, !!q.motor, q.load && q.load.kind, q.mount && q.mount.c, q.l0, q.l1]), pairs.map(q => [q.id, q.type])]);
   $('sel-name').textContent = p ? `${p.name} · ${typeName(p)}` : ps.length ? t('sel.many', { n: ps.length }) : t('sel.none');
   if (key !== selKey) {
-    selKey = key; selRefresh = []; body.textContent = '';
+    selKey = key; selRefresh = []; graphTick = null; body.textContent = '';
     if (linkDraft) {
       body.append(el('p', t('link.pick', { kind: t('type.' + (linkDraft.kind === 'belt' ? 'pulley' : 'sprocket')), list: nameOf(linkDraft.ids) }), { className: 'hint' }),
         rowOf(btn(t('btn.done'), finishLink), btn(t('btn.cancel'), () => { linkDraft = null; ui(); })));
@@ -298,8 +298,10 @@ function renderSel() {
           else r.append(choice([['R', t('pair.R')], ['F', t('pair.F')]], q.type, v => { q.type = v; q.turn = v === 'F' ? wrap(linkTh(byId(q.b)) - linkTh(byId(q.a))) : 0; commit(); }));
           r.append(btn('×', () => { pairs = pairs.filter(x => x !== q); commit(); })); box.append(r);
         }
-        body.append(mine.length ? labelled(t('sel.pairs'), box) : el('p', t('sel.noPairs'), { className: 'hint' }));
+        body.append(mine.length ? labelled(t('sel.pairs'), box) : el('p', t('sel.noPairs'), { className: 'hint' }), ...tmmFields(p));
+        const gc = el('canvas', null, { className: 'graphs' }); body.append(gc); graphTick = () => { if (gc.isConnected) drawGraphs(gc, p); }; selRefresh.push(graphTick);
       }
+      if (p.type === 'flywheel') body.append(slider(t('link.J'), 0, 10000, 0.0001, () => +flyJ(p).toPrecision(4), v => { p.J = v; commit(); }, unitSym('kgm2')));
       if (p.load) body.append(...loadFields(p));
       const dl = el('dl'); dl.dataset.why = p.id + ':'; body.append(dl); selRefresh.push(() => fillDl(dl, [...(p.load ? loadRows(p) : []), ...specRows(p)]));
       const rm = btn(t('btn.remove'), removeSel); rm.className = 'danger';
@@ -636,6 +638,7 @@ function start(d) {
       const c0 = clock; clock += RPM * dt; place();
       const ok = tmmStep(); if (!ok) { clock = c0; place(); }
       if (ok === tmmStuck) { tmmStuck = !ok; ui(); }
+      if (graphTick && ++frameNo % 4 === 0) graphTick();
     }
     draw(ts); requestAnimationFrame(frame);
   };

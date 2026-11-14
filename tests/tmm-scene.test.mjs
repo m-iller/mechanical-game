@@ -68,3 +68,72 @@ test('save and load keep the pairs, and the crank where it stood', () => {
   assert.ok(back.ok); assert.equal(back.n, 3);
   const phi = Math.PI / 3 + 0.5; close(back.x, 20 * Math.cos(phi) + Math.sqrt(4900 - (20 * Math.sin(phi)) ** 2), 1e-6);
 });
+
+/* ---- one turn of the crank: rates, forces, flywheel ---- */
+const R = 20, L = 70, MM = 1e-3;
+const sc = phi => { const s = Math.sqrt(L * L - (R * Math.sin(phi)) ** 2), sn = Math.sin(phi), cs = Math.cos(phi); return { x: R * cs + s, d1: -(R * sn + R * R * sn * cs / s), d2: -(R * cs + R * R * Math.cos(2 * phi) / s + R ** 4 * sn * sn * cs * cs / s ** 3) }; };
+
+test('cycle of the slider-crank: stroke H = 2r, and the slider rates match the closed form', () => {
+  const r = bench().run(() => {
+    resetScene(1); const [c, rod, g, sl] = insertTemplate('slidercrank', 0, 0); solve();
+    const cyc = tmmCycle(c), span = cycSpan(cyc, k => cycTravel(cyc, k, sl)), rows = [];
+    for (const k of [0, 25, 60, 100, 150]) rows.push([cyc.th0 + k * 2 * Math.PI / cyc.N, ...cycD(cyc, k, i => cycPoint(cyc, i, sl.id, [0, 0])[0])]);
+    return { ok: cyc.ok, H: span.max - span.min, rows };
+  });
+  assert.ok(r.ok); close(r.H, 40, 1e-6);
+  for (const [phi, x, d1, d2] of r.rows) { const e = sc(phi); close(x, e.x, 1e-7); close(d1, e.d1, 2e-3, 1e-3); close(d2, e.d2, 2e-3, 2e-2); }
+});
+
+test('kinetostatics agrees with virtual work: resisting force F on the slider needs M = F·|v/ω| on the crank; mean M = F·H / 2π', () => {
+  // Zhukovsky's lever: the balancing moment times the crank speed equals the power of the applied forces
+  const r = bench().run(() => {
+    resetScene(1); const [c, rod, g, sl] = insertTemplate('slidercrank', 0, 0); sl.F = 500; solve();
+    const cyc = tmmCycle(c), d = cycDynamics(cyc, 0);
+    return { th0: cyc.th0, N: cyc.N, Mb: d.Mb, mean: d.mean, mb: c.mb, src: power.src.get(c.id).M };
+  });
+  for (let k = 0; k < r.N; k += 7) { const e = sc(r.th0 + k * 2 * Math.PI / r.N), want = e.d1 > 0 ? 500 * e.d1 * MM : 0; if (Math.abs(e.d1) > 0.5) close(r.Mb[k], want, 3e-3, 1e-4); }
+  close(r.mean, 500 * 0.040 / (2 * Math.PI), 2e-3);
+  close(r.mb, r.mean, 1e-12); close(r.src, r.mean, 1e-9);       // and that mean moment is what the crank asks of its motor
+});
+
+test('inertia of the slider: M = m·a·(v/ω), with a and v from the closed form', () => {
+  const W = 40, m = 2;
+  const r = bench().run((W, m) => {
+    resetScene(1); const [c, rod, g, sl] = insertTemplate('slidercrank', 0, 0); sl.m = m; solve();
+    const cyc = tmmCycle(c), d = cycDynamics(cyc, W); return { th0: cyc.th0, N: cyc.N, Mb: d.Mb, mean: d.mean };
+  }, W, m);
+  for (let k = 3; k < r.N; k += 11) { const e = sc(r.th0 + k * 2 * Math.PI / r.N); close(r.Mb[k], m * (e.d2 * MM * W * W) * (e.d1 * MM), 5e-3, 2e-4); }
+  close(r.mean, 0, 0, 1e-4);                                     // inertia does no work over a full turn
+});
+
+test('flywheel sum: excess work between the mean moment and the need, δ = ΔA / (J·ω²)', () => {
+  const r = bench().run(() => {
+    resetScene(1); const [c, rod, g, sl] = insertTemplate('slidercrank', 0, 0); sl.F = 500; solve();
+    const cyc = tmmCycle(c), d = cycDynamics(cyc, 0); return { th0: cyc.th0, N: cyc.N, dA: d.dA, mean: d.mean };
+  });
+  // the same sum from the closed form, integrated independently on a finer grid
+  const n = 7200, h = 2 * Math.PI / n, mean = 500 * 0.040 / (2 * Math.PI); let E = 0, lo = 0, hi = 0;
+  for (let i = 0; i < n; i++) { const e = sc(r.th0 + (i + 0.5) * h); E += (mean - (e.d1 > 0 ? 500 * e.d1 * MM : 0)) * h; lo = Math.min(lo, E); hi = Math.max(hi, E); }
+  close(r.dA, hi - lo, 1e-2);
+});
+
+test('flywheel inertia: a steel disc of the layer thickness, J = ½·m·r²', () => {
+  const J = bench().run(() => flyJ({ d: 200 }));
+  close(J, 0.5 * (7850 * Math.PI * 0.1 * 0.1 * 0.01) * 0.1 * 0.1, 1e-12);
+});
+
+test('demo: crank press — motor, belt, flywheel, crank, rod, ram; the mean moment loads the motor and the flywheel holds the speed', () => {
+  const r = bench().run(() => {
+    resetScene(3); const m = insertTemplate('press', 0, 0); solve();
+    const mot = m[0], c = m.find(p => p.type === 'tcrank'), ram = m[m.length - 1], cyc = tmmCycle(c), w = Math.abs(c.w) * RPM, d = cycDynamics(cyc, w), J = crankJ(c);
+    return { lock: lockMsg, warn: warnings.filter(x => x.level !== 'info').map(x => x.code), pairs: pairs.map(q => q.type).sort(), W: tmmInfo.groups.map(g => g.W), ratio: mot.w / c.w,
+      mean: d.mean, src: power.src.get(mot.id), H: cycSpan(cyc, k => cycTravel(cyc, k, ram)), J, delta: d.dA / (J * w * w), peak: d.peak };
+  });
+  assert.equal(r.lock, ''); assert.deepEqual(r.warn, []); assert.deepEqual(r.pairs, ['P', 'R', 'R']); assert.deepEqual(r.W, [1]);
+  close(Math.abs(r.ratio), 4, 1e-9);                              // belt 24 → 96
+  close(r.H.max - r.H.min, 40, 1e-5);
+  close(r.mean, 4000 * 0.25 * 0.040 / (2 * Math.PI), 5e-3);       // work of the force over its part of the stroke, per turn
+  close(r.src.M, r.mean / (4 * 0.96), 1e-6);                      // reduced through the belt
+  assert.ok(r.src.ratio > 0.4 && r.src.ratio < 1);
+  close(r.J, 0.6, 1e-12); assert.ok(r.delta > 0.01 && r.delta < 0.1); assert.ok(r.peak > 5 * r.mean);
+});

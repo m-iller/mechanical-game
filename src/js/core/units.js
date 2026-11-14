@@ -4,7 +4,7 @@
 
 // unit: [factor to SI, offset to SI, English symbol, Russian symbol]
 const UNITS = {
-  'rad/s': [1, 0, 'rad/s', 'рад/с'], rpm: [Math.PI / 30, 0, 'rpm', 'об/мин'], Hz: [2 * Math.PI, 0, 'Hz', 'Гц'],
+  'rad/s': [1, 0, 'rad/s', 'рад/с'], 'rad/s2': [1, 0, 'rad/s²', 'рад/с²'], rpm: [Math.PI / 30, 0, 'rpm', 'об/мин'], Hz: [2 * Math.PI, 0, 'Hz', 'Гц'],
   rad: [1, 0, 'rad', 'рад'], deg: [Math.PI / 180, 0, '°', '°'],
   m: [1, 0, 'm', 'м'], mm: [1e-3, 0, 'mm', 'мм'], 'm/s': [1, 0, 'm/s', 'м/с'], 'mm/s': [1e-3, 0, 'mm/s', 'мм/с'], 'm/s2': [1, 0, 'm/s²', 'м/с²'],
   N: [1, 0, 'N', 'Н'], kN: [1e3, 0, 'kN', 'кН'], Nm: [1, 0, 'N·m', 'Н·м'], kNm: [1e3, 0, 'kN·m', 'кН·м'],

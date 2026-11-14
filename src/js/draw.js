@@ -284,7 +284,7 @@ function drawTop(dpr, s, bh) {
   for (const g of selParts()) {
     ctx.strokeStyle = C.select; ctx.lineWidth = 2 / s;
     const b = boxOf(g);
-    if (isLink(g)) { tmmOutline(g); continue; }
+    if (isLink(g)) { tmmOutline(g); tmmDrawPath(g, s); continue; }
     if (b) { ctx.save(); ctx.translate(g.x, g.y); ctx.rotate(g.dir); const y0 = g.type === 'rack' ? -1.25 * M - RB - 2 : -b[1] - 2, hh = g.type === 'rack' ? RB + 2.25 * M + 4 : 2 * b[1] + 4, x0 = g.type === 'hbevel' ? -9 : -b[0] - 2, ww = g.type === 'hbevel' ? 24 : 2 * b[0] + 4; ctx.strokeRect(x0, y0, ww, hh); ctx.restore(); }
     else { ctx.beginPath(); ctx.arc(g.x, g.y, tipR(g) + 1.6, 0, TAU); ctx.stroke(); }
   }

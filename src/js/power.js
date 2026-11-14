@@ -5,11 +5,14 @@
    With no loads on the bench the old estimate stays: all the motor power, less the losses, taken off at the chosen output. */
 'use strict';
 
+// a part loads the drive through a load law set by hand, or as the crank of a mechanism with the mean moment its cycle needs (p.mb)
+const hasLoad = p => !!p.load || p.mb > 0, lawOf = p => p.load ? loadOf(p.load) : () => p.mb;
 const isDyn = m => !!m.kind && m.kind !== 'speed';
 const motorDir = m => Math.sign(isDyn(m) ? m.n : m.rpm) || 1;
 let power = { has: false, src: new Map(), load: new Map(), flow: new Map() }, warnings = [];
 
 function solve() {
+  tmmLoads();
   const dyn = parts.filter(p => p.motor && isDyn(p.motor));
   for (const p of dyn) p.motor.rpm = p.motor.n;                 // a trial speed, only to read the ratios
   solveKin();
@@ -19,7 +22,7 @@ function solve() {
       const mates = dyn.filter(q => q === p || q.motor.follow === p.id), kOf = o => p.w ? Math.abs(o.w / p.w) : 0;
       const srcs = mates.map(q => ({ q, k: kOf(q), s: sourceOf(q.motor) })).filter(x => x.k > 0 || x.q === p);
       const lead = srcs[0].s, c = solved.comp(p);
-      const items = parts.filter(q => q.load && solved.comp(outOf(q)) === c && outOf(q).w).map(q => ({ k: kOf(outOf(q)), eta: solved.eff.get(bodyOf(outOf(q))) || 1, M: loadOf(q.load) }));
+      const items = parts.filter(q => hasLoad(q) && solved.comp(outOf(q)) === c && outOf(q).w).map(q => ({ k: kOf(outOf(q)), eta: solved.eff.get(bodyOf(outOf(q))) || 1, M: lawOf(q) }));
       const all = { kind: lead.kind, ideal: lead.ideal, w0: Math.min(...srcs.map(x => x.s.w0 / (x.k || 1))), Mnom: srcs.reduce((s, x) => s + x.k * x.s.Mnom, 0), M: w => srcs.reduce((s, x) => s + x.k * x.s.M(x.k * w), 0) };
       const op = operatingPoint(all, reduceLoads(items));
       for (const x of srcs) ops.set(x.q.id, { ...op, w: op.w * x.k, share: op.M && all.M(op.w) ? x.k * x.s.M(x.k * op.w) / all.M(op.w) : 1 / srcs.length });
@@ -35,9 +38,9 @@ function solve() {
 
 function flows(ops) {
   const flow = new Map(), src = new Map(), load = new Map(), add = (v, P) => flow.set(v, (flow.get(v) || 0) + P);
-  const loads = parts.filter(p => p.load);
+  const loads = parts.filter(hasLoad);
   if (!lockMsg) for (const p of loads) {
-    const o = outOf(p), w = Math.abs(o.w) * RPM, M = w ? loadOf(p.load)(w) : 0, eta = p.load.eta == null ? 1 : p.load.eta;
+    const o = outOf(p), w = Math.abs(o.w) * RPM, M = w ? lawOf(p)(w) : 0, eta = !p.load || p.load.eta == null ? 1 : p.load.eta;
     let v = bodyOf(o), P = M * w; const fed = solved.hops.has(v), path = [];
     if (fed) { add(v, P); while (solved.prev.has(v)) { const { x, e } = solved.prev.get(v); P /= e.eta; path.push(e.eta); v = x; add(v, P); } }
     load.set(p.id, { w, M, P: M * w, Pout: M * w * eta, eta, fed, etaPath: path.reduce((a, b) => a * b, 1), Pmotor: fed ? P : 0, root: fed ? v : -1 });

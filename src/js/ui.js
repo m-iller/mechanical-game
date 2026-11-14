@@ -99,12 +99,12 @@ function ioRows() {
   return rows;
 }
 // rows are [label, value] or [label, value, explanation]; a value with an explanation opens the "where from" box when clicked
-let why = null;
+let why = null, whySeen = false;
 const fillDl = (dl, rows) => {
   dl.textContent = '';
   for (const [k, v, e] of rows) {
     const dd = el('dd', v);
-    if (e) { const id = (dl.dataset.why || '') + k; dd.className = 'ex'; dd.tabIndex = 0; dd.setAttribute('role', 'button'); dd.onclick = () => { why = why && why.id === id ? null : { id, title: k, e }; renderWhy(); }; dd.onkeydown = ev => { if (ev.key === 'Enter') dd.onclick(); }; if (why && why.id === id) why.e = e; }
+    if (e) { const id = (dl.dataset.why || '') + k; dd.className = 'ex'; dd.tabIndex = 0; dd.setAttribute('role', 'button'); dd.onclick = () => { why = why && why.id === id ? null : { id, title: k, e }; renderWhy(); }; dd.onkeydown = ev => { if (ev.key === 'Enter') dd.onclick(); }; if (why && why.id === id) { why.e = e; whySeen = true; } }
     dl.append(el('dt', k), dd);
   }
 };
@@ -292,7 +292,10 @@ function renderSel() {
 }
 function ui() {
   $('run').textContent = running ? t('btn.pause') : t('btn.run'); press($('run'), !running);
-  renderMotors(); fillDl($('io'), ioRows()); renderLayers(); renderSel(); renderWarns(); renderWhy();
+  whySeen = false;
+  renderMotors(); fillDl($('io'), ioRows()); renderLayers(); renderSel(); renderWarns();
+  if (why && !whySeen) why = null;   // the figure it explained is gone
+  renderWhy();
   const moving = parts.filter(p => !isShaft(p) && isDriven(p)).length, total = parts.filter(p => !isShaft(p)).length;
   const err = (warnings.find(w => w.level === 'error') || {}).text;
   $('status').className = 'status' + (linkDraft ? '' : lockMsg || err ? ' locked' : !running ? ' paused' : '');
@@ -302,7 +305,7 @@ function ui() {
   $('new-layer').textContent = t('add.onLayer', { l: LET(activeLayer) });
   $('add').disabled = $('tpl-add').disabled = lockedLayers.has(activeLayer);
   for (const m of ['both', 'top', 'side']) press($('vm-' + m), viewMode === m);
-  press($('dims'), showDims);
+  press($('dims'), showDims); press($('scheme'), schemeMode);
   const tr = $('train'), out = outPart(); tr.textContent = '';
   for (const p of parts) {
     const b = el('button', null, { onclick: e => pick([p.id], e.shiftKey) });
@@ -558,6 +561,7 @@ $('dims').onclick = () => { showDims = !showDims; ui(); save(); };
 $('example').onclick = () => { example(); solve(); fit(); ui(); save(); };
 $('clear').onclick = () => { const n = layerCount; resetScene(n); commit(); };
 $('fit').onclick = fit;
+$('scheme').onclick = () => { schemeMode = !schemeMode; ui(); save(); };
 $('why-x').onclick = () => { why = null; renderWhy(); };
 $('zoom-in').onclick = () => zoomAt(W / 2, topMid(), 1.3);
 $('zoom-out').onclick = () => zoomAt(W / 2, topMid(), 1 / 1.3);

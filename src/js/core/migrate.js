@@ -11,7 +11,7 @@ const MIGRATIONS = {
     for (let l = 0; l < n; l++) layers.push({ name: '', visible: !hidden.has(l), locked: false });
     const parts = (d.parts || []).map(p => p.motor ? { ...p, motor: { kind: 'speed', ...p.motor } } : p);
     const { layerCount, hidden: h, ...rest } = d;
-    return { ...rest, v: 3, layers, parts };
+    return { ...rest, v: 3, layers, parts, scheme: false };   // a 2.x bench keeps the drawn look it was saved with
   },
 };
 function migrate(d) {

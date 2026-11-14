@@ -81,6 +81,7 @@ function cone(p, s, P, face, endVis, zax, fill, ink) {
 }
 function drawLinkTop(L) {
   const R = L.route; if (!R) return;
+  if (schemeMode) return schemeLink(L, view.scale);
   ctx.save(); ctx.lineJoin = 'round';
   if (L.kind === 'belt') {
     const pp = R.L / Math.max(1, Math.round(R.L / 9));
@@ -109,6 +110,7 @@ function drawTop(dpr, s, bh) {
   const detail = (x, y, ang, path, ink) => { ctx.save(); ctx.translate(x, y); ctx.rotate(ang); ctx.strokeStyle = ink; ctx.lineWidth = 0.8 / s; ctx.globalAlpha = 0.6; ctx.stroke(path); ctx.restore(); };
   const dot = (x, y, r, f) => { ctx.fillStyle = f; ctx.beginPath(); ctx.arc(x, y, r, 0, TAU); ctx.fill(); };
   const part = g => {
+    if (schemeMode && schemePart(g, s)) return;   // kinematic-scheme symbol instead of the drawn shape
     const bad = collide.has(g.id), ink = bad ? C.jam : C.ink, lw = (bad ? 2 : 1.2) / s, fill = fillOf(g), sh = g.layer > 0, main = g.motor ? C.brass : fill, an = angle(g);
     // draw in the part's own frame: origin at its centre, x axis along its direction
     const local = fn => { ctx.save(); ctx.translate(g.x, g.y); ctx.rotate(g.dir || 0); ctx.lineJoin = 'round'; fn(); ctx.restore(); };

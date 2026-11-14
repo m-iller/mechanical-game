@@ -59,7 +59,7 @@ let lockedLayers = new Set(), layerNames = [], soloActive = false;   // soloActi
 let sel = new Set(), outId = null, linkDraft = null;
 let running = true, clock = 0, jit = 0;      // clock advances by RPM * seconds, so angle = phase + rpm * clock
 let lockMsg = '', hintMsg = '', collide = new Set(), meshes = [];
-let showDims = false, viewMode = 'both';
+let showDims = false, viewMode = 'both', schemeMode = true;   // schemeMode: the top view as a kinematic scheme (GOST 2.770-68) rather than drawn parts
 const view = { cx: 0, cy: 0, scale: 3 };
 
 /* ---------- small helpers ---------- */
@@ -227,7 +227,7 @@ function resetScene(n = 3) {
 
 /* ---------- save and load ---------- */
 function serialize() {
-  return { v: SCENE_V, nextId, outId, showDims, solo: soloActive,
+  return { v: SCENE_V, nextId, outId, showDims, solo: soloActive, scheme: schemeMode,
     layers: [...Array(layerCount)].map((_, l) => ({ name: layerNames[l] || '', visible: !hiddenLayers.has(l), locked: lockedLayers.has(l) })),
     links: links.map(L => ({ id: L.id, kind: L.kind, ids: L.ids, crossed: L.crossed, free: linkPos(L) })),
     parts: parts.map(p => {
@@ -250,7 +250,7 @@ function load(d) {
   layerCount = Math.min(MAXL, Math.max(1, ls.length, ...parts.map(p => (isShaft(p) ? p.l1 : p.layer) + 1)));
   const flag = k => new Set(ls.map((L, l) => L[k] ? l : -1).filter(l => l >= 0));
   hiddenLayers = new Set(ls.map((L, l) => L.visible === false ? l : -1).filter(l => l >= 0)); lockedLayers = flag('locked');
-  layerNames = ls.map(L => L.name || ''); soloActive = !!d.solo; sel = new Set(); linkDraft = null; activeLayer = 0; clock = 0;
+  layerNames = ls.map(L => L.name || ''); soloActive = !!d.solo; schemeMode = d.scheme !== false; sel = new Set(); linkDraft = null; activeLayer = 0; clock = 0;
 }
 const STORE = 'gear-bench-5';
 function save() { try { localStorage.setItem(STORE, JSON.stringify(serialize())); } catch (e) {} }

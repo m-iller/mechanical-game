@@ -12,6 +12,7 @@ Gear Bench is growing from a drive sandbox into a rough-figures tool for mechani
 - **Warnings**: motor stall, overload, a motor that cannot start under its load, an undriven load, undercut below 17 teeth.
 - **Layers**: only the active layer takes the pointer, the others are drawn faded and let clicks through. Layers can be named and locked. "Only active layer" is a mode that follows the active layer.
 - **Editable side view**: drag a part along x and between layers, pull a shaft by its ends, click a layer's letter to make it active.
+- **Kinematic scheme**: the top view draws parts as scheme symbols after GOST 2.770-68 (pitch circles, belt and chain lines, a cross for a part fixed on its shaft, ground hatching). The "Scheme" button switches back to drawn parts.
 - Templates "Motor and fan" and "Motor, belt, planetary, chain, conveyor".
 - Calculation core without DOM in `src/js/core/` (units, explanations, warnings, energy ports, scene migrations, load characteristics) and tests: `npm test`.
 

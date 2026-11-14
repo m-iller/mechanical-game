@@ -12,7 +12,8 @@ const SAVED_V2 = { v: 2, nextId: 6, layerCount: 2, outId: 5, showDims: true, hid
   { id: 5, name: 'G5', type: 'spur', x: 104, y: 0, layer: 1, free: 0, z: 42 }] };
 
 test('a scene saved by version 2 opens and runs as before', () => {
-  const r = bench().run(d => { load(d); solve(); return { w: byId(5).w, lock: lockMsg, layerCount, hidden: [...hiddenLayers], out: outId, kind: byId(1).motor.kind, dims: showDims }; }, SAVED_V2);
+  const r = bench().run(d => { load(d); solve(); return { w: byId(5).w, lock: lockMsg, layerCount, hidden: [...hiddenLayers], out: outId, kind: byId(1).motor.kind, dims: showDims, scheme: schemeMode }; }, SAVED_V2);
+  assert.equal(r.scheme, false);   // a 2.x bench keeps its drawn look; new benches open as a kinematic scheme
   assert.equal(r.lock, ''); close(r.w, 120 / 9);
   assert.deepEqual([r.layerCount, r.hidden, r.out, r.kind, r.dims], [2, [1], 5, 'speed', true]);
 });

@@ -132,6 +132,30 @@ await page.keyboard.press('Control+Shift+z'); un = await page.evaluate(() => par
 await page.keyboard.press('Control+z');
 un = await page.evaluate(() => { resetScene(1); const out = []; for (const kind of MOTOR_KINDS) { const m = addPart('emotor', { x: 0, y: 0 }); setMotorKind(m.motor, kind); m.motor.n = 0; m.motor.rpm = 0; solve(); out.push([kind, m.w, lockMsg || '', warnings.filter(w => w.level === 'error').length]); removeParts([m.id]); } return out; });
 for (const [kind, w, lock, errs] of un) if (w !== 0 || lock || errs) fail('zero speed, ' + kind + ': ' + JSON.stringify([w, lock, errs]));
+// markers on the sheet open info windows; the panel border, the border between the views and the panel sections can be moved
+await page.evaluate(() => { resetScene(1); insertTemplate('fan', 0, 0); solve(); viewMode = 'both'; why = null; fit(); ui(); });
+await page.waitForTimeout(300);
+{ const ms = await page.evaluate(() => window.__bench.markers()), r = await page.evaluate(() => { const r = cv.getBoundingClientRect(); return [r.left, r.top]; });
+  if (ms.length < 2) fail('markers on the sheet: ' + ms.length);
+  await page.mouse.click(r[0] + ms[0].x, r[1] + ms[0].y); await page.waitForTimeout(150);
+  let iw = await page.evaluate(() => [document.querySelectorAll('.info').length, document.querySelectorAll('.info dd').length, sel.size]);
+  if (iw[0] !== 1 || iw[1] < 2 || iw[2] !== 0) fail('info window after a click on a marker: ' + iw);
+  const hb = await page.evaluate(() => { const b = document.querySelector('.info h3').getBoundingClientRect(); return [b.left + 30, b.top + 8, document.querySelector('.info').offsetLeft]; });
+  await dragTo({ x: hb[0], y: hb[1] }, { x: hb[0] - 60, y: hb[1] - 40 });
+  iw = await page.evaluate(() => document.querySelector('.info').offsetLeft); if (Math.abs(hb[2] - iw - 60) > 3 && iw > 2) fail('dragging an info window: ' + hb[2] + ' -> ' + iw);
+  await page.click('.info h3 button'); iw = await page.evaluate(() => document.querySelectorAll('.info').length); if (iw) fail('info window did not close');
+  const sp = await page.evaluate(() => { const b = split.getBoundingClientRect(); return [b.left + 7, b.top + 200, document.querySelector('.panel').offsetWidth, W]; });
+  await dragTo({ x: sp[0], y: sp[1] }, { x: sp[0] - 100, y: sp[1] });
+  const sp2 = await page.evaluate(() => [document.querySelector('.panel').offsetWidth, W]);
+  if (Math.abs(sp2[0] - sp[2] - 100) > 3 || Math.abs(sp[3] - sp2[1] - 100) > 3) fail('dragging the panel border: ' + sp + ' -> ' + sp2);
+  await page.dblclick('#split'); 
+  const bh = await page.evaluate(() => { const r = cv.getBoundingClientRect(); return [r.left + 300, r.top + bandH(), bandH()]; });
+  await dragTo({ x: bh[0], y: bh[1] }, { x: bh[0], y: bh[1] + 80 });
+  const bh2 = await page.evaluate(() => bandH()); if (Math.abs(bh2 - bh[2] - 80) > 3) fail('dragging the border between the views: ' + bh[2] + ' -> ' + bh2);
+  await page.evaluate(() => { layout.sideFrac = null; saveLayout(); });
+  await page.click('.panel section:nth-child(4) > h2'); let cl = await page.evaluate(() => getComputedStyle(document.getElementById('layers')).display); if (cl !== 'none') fail('a folded section still shows: ' + cl);
+  await page.click('.panel section:nth-child(4) > h2');
+}
 // laying a pipe in the side view: port on one layer, port on another
 await page.evaluate(() => { resetScene(2); addPart('htank', { x: 0, y: 0, layer: 0 }); addPart('hpump', { x: 60, y: 0, layer: 1, q: 5, motor: { rpm: 1000, tq: 20 } }); solve(); viewMode = 'both'; fit(); setActive(1); pipeDraft = { a: null, pts: [], cur: null }; ui(); });
 const sa = await sidePos(0, 0), sb = await sidePos(49, 1);

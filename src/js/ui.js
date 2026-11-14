@@ -362,6 +362,7 @@ function ui() {
   $('run').textContent = running ? t('btn.pause') : t('btn.run'); press($('run'), !running);
   whySeen = false;
   renderMotors(); fillDl($('io'), ioRows()); renderLayers(); renderSel(); renderWarns();
+  infoSync();
   if (why && !whySeen) why = null;   // the figure it explained is gone
   renderWhy();
   const moving = parts.filter(p => !isShaft(p) && isDriven(p)).length, total = parts.filter(p => !isShaft(p)).length;
@@ -373,7 +374,7 @@ function ui() {
   $('new-layer').textContent = t('add.onLayer', { l: LET(activeLayer) });
   $('add').disabled = $('tpl-add').disabled = lockedLayers.has(activeLayer);
   for (const m of ['both', 'top', 'side']) press($('vm-' + m), viewMode === m);
-  press($('dims'), showDims); press($('scheme'), schemeMode);
+  press($('dims'), showDims); press($('scheme'), schemeMode); press($('labels'), layout.labels);
   const tr = $('train'), out = outPart(); tr.textContent = '';
   for (const p of parts) {
     const b = el('button', null, { onclick: e => pick([p.id], e.shiftKey) });
@@ -724,7 +725,8 @@ function drawTriangles(cvs, p) {
 }
 
 /* ---------- pointer input ---------- */
-const pts = new Map(); let pdrag = null, drag = null, pan = null, pinch = null, holdTimer = null;
+const nearSplit = p => viewMode === 'both' && Math.abs(p.y - bandH()) < 5;
+const pts = new Map(); let splitDrag = false, pdrag = null, drag = null, pan = null, pinch = null, holdTimer = null;
 const pos = e => { const r = cv.getBoundingClientRect(); return { x: e.clientX - r.left, y: e.clientY - r.top }; };
 function hitTop(g, w) {
   if (T(g).grp === 'heat') return Math.hypot(w.x - g.x, w.y - g.y) < 11;
@@ -755,9 +757,12 @@ function hit(p) {
 cv.addEventListener('pointerdown', e => {
   cv.setPointerCapture(e.pointerId); const p = pos(e); pts.set(e.pointerId, p); clearTimeout(holdTimer);
   if (pts.size === 2) { drag = pan = boxSel = null; const [a, b] = [...pts.values()]; pinch = { d: Math.hypot(a.x - b.x, a.y - b.y) || 1, scale: view.scale, w: toWorld((a.x + b.x) / 2, (a.y + b.y) / 2), side: (a.y + b.y) / 2 < bandH() }; return; }
+  if (nearSplit(p)) { splitDrag = true; return; }   // the border between the two views
   const side = p.y < bandH();
   if (side && p.x < 46) { const l = Math.floor((baseY() - p.y) / view.scale / LP + 0.2); if (l >= 0 && l < layerCount) { setActive(l); return; } }   // a layer's letter in the side view makes it active
   if (pipeDraft) { pipeClick(side ? sidePoint(p) : toWorld(p.x, p.y)); return; }
+  const mk = !linkDraft && !side && markerAt(p);
+  if (mk) { infoToggle(mk.key, mk); return; }
   const g = hit(p);
   if (linkDraft) { // building a belt or chain: clicks add and remove wheels
     if (g && g.type === (linkDraft.kind === 'belt' ? 'pulley' : 'sprocket') && g.layer === byId(linkDraft.ids[0]).layer) { const i = linkDraft.ids.indexOf(g.id); if (i < 0) linkDraft.ids.push(g.id); else if (linkDraft.ids.length > 1) linkDraft.ids.splice(i, 1); ui(); }
@@ -801,11 +806,13 @@ cv.addEventListener('pointerdown', e => {
     if (e.shiftKey && !g) startBox(); else if (!g) holdTimer = setTimeout(startBox, 380);   // hold still, then drag, to select an area
   }
 });
-cv.addEventListener('pointermove', e => { mouse = pos(e); });
+cv.addEventListener('pointermove', e => { mouse = pos(e); cv.classList.toggle('splitting', splitDrag || (!pts.size && nearSplit(mouse))); });
+cv.addEventListener('dblclick', e => { if (nearSplit(pos(e))) { layout.sideFrac = null; saveLayout(); } });
 cv.addEventListener('pointerleave', () => { mouse = null; });
 cv.addEventListener('pointermove', e => {
   if (!pts.has(e.pointerId)) return;
   const p = pos(e); pts.set(e.pointerId, p);
+  if (splitDrag) { layout.sideFrac = Math.max(0.05, Math.min(0.9, p.y / H)); return; }
   if (pipeDraft) pipeDraft.cur = p.y < bandH() ? null : toWorld(p.x, p.y);
   if (pinch && pts.size === 2) {
     const [a, b] = [...pts.values()], mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
@@ -866,6 +873,7 @@ function sideDrag(p) {
 }
 const up = e => {
   pts.delete(e.pointerId); clearTimeout(holdTimer);
+  if (splitDrag) { splitDrag = false; saveLayout(); return; }
   if (boxSel) {
     const a = toWorld(Math.min(boxSel.x0, boxSel.x1), Math.min(boxSel.y0, boxSel.y1)), b = toWorld(Math.max(boxSel.x0, boxSel.x1), Math.max(boxSel.y0, boxSel.y1));
     const inside = parts.filter(g => canPick(g) && g.x >= a.x && g.x <= b.x && g.y >= a.y && g.y <= b.y).map(g => g.id);
@@ -907,6 +915,7 @@ $('example').onclick = () => { example(); solve(); fit(); ui(); save(); };
 $('clear').onclick = () => { const n = layerCount; resetScene(n); commit(); };
 $('fit').onclick = fit;
 $('scheme').onclick = () => { schemeMode = !schemeMode; ui(); save(); };
+$('labels').onclick = () => { layout.labels = !layout.labels; saveLayout(); ui(); };
 $('why-x').onclick = () => { why = null; renderWhy(); };
 $('zoom-in').onclick = () => zoomAt(W / 2, topMid(), 1.3);
 $('zoom-out').onclick = () => zoomAt(W / 2, topMid(), 1 / 1.3);
@@ -951,14 +960,15 @@ function start(d) {
       if (!ok) { clock = c0; place(); }
       if (tk.restep) { hydroStep(); elStep(); thermoStep(true); thermoPipes(); warnings = runChecks({ parts, power }); ui(); }
       if (ok === tmmStuck) { tmmStuck = !ok; ui(); }
-      if (graphTick && ++frameNo % 4 === 0) graphTick();
+      if (++frameNo % 4 === 0 && graphTick) graphTick();
+      if (frameNo % 15 === 0) infoTick();
     }
     draw(ts); requestAnimationFrame(frame);
   };
   requestAnimationFrame(frame);
 }
 // small hook for automated checks
-window.__bench = { undo, redo, copySel, pasteSel, hist, state: () => ({ lock: lockMsg, hint: hintMsg, io: ioRows(), warnings: warnings.map(w => [w.level, w.code]), parts: parts.map(p => ({ name: p.name, w: +outOf(p).w.toFixed(4), und: p.und })) }), parts: () => parts, solve, pick };
+window.__bench = { infoOpen, infoWins, markers: () => markers, layout, undo, redo, copySel, pasteSel, hist, state: () => ({ lock: lockMsg, hint: hintMsg, io: ioRows(), warnings: warnings.map(w => [w.level, w.code]), parts: parts.map(p => ({ name: p.name, w: +outOf(p).w.toFixed(4), und: p.und })) }), parts: () => parts, solve, pick };
 const hot = window.claude && window.claude.hot;
 if (hot && hot.snapshot) hot.snapshot(() => serialize());
 if (hot && hot.ready) hot.ready(start); else start(hot && hot.data ? hot.data : null);

@@ -108,6 +108,12 @@ const pa = await portXY('hrelief', 1), pb = await portXY('htank', 0);
 await page.mouse.click(pa.x, pa.y); await page.mouse.click(pa.x, pb.y - 30); await page.mouse.click(pb.x, pb.y); await page.waitForTimeout(100);
 hs = await page.evaluate(() => ({ n: pipes.length, last: pipes[pipes.length - 1], draft: pipeDraft, ok: hyd.ok }));
 if (hs.n !== 7 || hs.draft || hs.last.pts.length !== 1 || hs.last.kind !== 'return' || !hs.ok) fail('laying a pipe by clicks: ' + JSON.stringify(hs));
+// laying a pipe in the side view: port on one layer, port on another
+await page.evaluate(() => { resetScene(2); addPart('htank', { x: 0, y: 0, layer: 0 }); addPart('hpump', { x: 60, y: 0, layer: 1, q: 5, motor: { rpm: 1000, tq: 20 } }); solve(); viewMode = 'both'; fit(); setActive(1); pipeDraft = { a: null, pts: [], cur: null }; ui(); });
+const sa = await sidePos(0, 0), sb = await sidePos(49, 1);
+await page.mouse.click(sa.x, sa.y); await page.mouse.click(sb.x, sb.y); await page.waitForTimeout(80);
+hs = await page.evaluate(() => ({ n: pipes.length, q: pipes[0], draft: !!pipeDraft, L: pipes[0] && pipeLen(pipes[0]) }));
+if (hs.n !== 1 || hs.draft || hs.q.a !== 1 || hs.q.b !== 2 || hs.q.pb !== 0 || Math.abs(hs.L - (49 + 18) / 1000) > 1e-6) fail('laying a pipe in the side view: ' + JSON.stringify(hs));
 await page.evaluate(() => { resetScene(2); insertTemplate('excavator', 0, 0); solve(); viewMode = 'top'; fit(); setActive(1); });
 await page.waitForTimeout(700);
 s = await state(); if (s.lock || s.warnings.some(w => w[0] !== 'info')) fail('excavator demo: ' + s.lock + JSON.stringify(s.warnings));

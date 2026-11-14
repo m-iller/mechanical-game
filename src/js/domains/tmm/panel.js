@@ -8,9 +8,10 @@ function tmmSeries(p) {
   if (cam) { // a cam and its follower: the law itself over one turn
     const f = p.type === 'tfollow' ? p : parts.find(q => q.type === 'tfollow' && camOf(q) === cam), rr = f ? f.rr || 0 : 0, w = Math.abs(cam.w) * RPM, sg = cam.w < 0 ? -1 : 1, N = 180;
     const d = [...Array(N)].map((_, k) => camS(cam, TAU * k / N));
-    return { cam, f, rr, w, cyc: { ok: true, N }, chk: camCheck(cam, rr), at: () => mod(linkTh(cam) - (f ? f.dir : 0), TAU) / TAU, series: [
+    const e = f ? f.e || 0 : 0;
+    return { cam, f, rr, e, w, cyc: { ok: true, N }, chk: camCheck(cam, rr, Math.PI / 6, 720, e), at: () => mod(linkTh(cam) - (f ? f.dir : 0), TAU) / TAU, series: [
       { name: 's', unit: 'mm', data: d.map(x => x[0] * 1e-3) }, { name: 'v', unit: 'm/s', data: d.map(x => x[1] * w * sg * 1e-3) }, { name: 'a', unit: 'm/s2', data: d.map(x => x[2] * w * w * 1e-3) },
-      { name: 'α', unit: 'deg', data: d.map((x, k) => camPressure(cam, rr, TAU * k / N)) }] };
+      { name: 'α', unit: 'deg', data: d.map((x, k) => camPressure(cam, rr, TAU * k / N, e)) }] };
   }
   const c = p.type === 'tcrank' ? p : crankOf(p); if (!c || linkFixed(p) && p !== c) return null;
   const cyc = tmmCycle(c); if (!cyc.ok) return { cyc, series: [] };
@@ -39,7 +40,7 @@ function tmmCycleRows(p) {
       [t('io.lift'), fmtU(c.h * 1e-3, 'mm')],
       [t('io.vmax'), fmtU(k.vmax * S.w * 1e-3, 'm/s'), ex('v', k.vmax * S.w * 1e-3, 'm/s', 'v = (ds/dφ)·ω', [["s′_max", k.vmax * 1e-3, 'mm'], ...wv0], ['ex.camLaw'])],
       [t('io.amax'), fmtU(k.amax * S.w * S.w * 1e-3, 'm/s2'), ex('a', k.amax * S.w * S.w * 1e-3, 'm/s2', 'a = (d²s/dφ²)·ω²', [["s″_max", k.amax * 1e-3, 'mm'], ...wv0], ['ex.camLaw', 'ex.constW'])],
-      [t('io.alpha'), `${fmtNum(k.alpha * D)}°`, ex('α', k.alpha, 'deg', "tan α = s′ / (r + r_r + s)", R0, ['ex.camInline', 'ex.camAllow'])],
+      [t('io.alpha'), `${fmtNum(k.alpha * D)}°`, ex('α', k.alpha, 'deg', "tan α = (s′ − e) / (√((r + r_r)² − e²) + s)", [...R0, ['e', S.e * 1e-3, 'mm']], ['ex.camInline', 'ex.camAllow'])],
       [t('io.rmin'), fmtU(Math.max(0, k.rmin) * 1e-3, 'mm'), ex('r_min', Math.max(0, k.rmin) * 1e-3, 'mm', "r_min = max(|s′| / tan[α] − s) − r_r,   [α] = 30°", [['r_r', S.rr * 1e-3, 'mm']], ['ex.camInline'])],
       [t('io.rho'), isFinite(k.rho) ? fmtU(k.rho * 1e-3, 'mm') : '∞', ex('ρ_min', k.rho * 1e-3, 'mm', "ρ = (R² + R′²)^1.5 / (R² + 2R′² − R·R″),   R = r + r_r + s", R0, ['ex.camRho'])],
     ];
@@ -69,6 +70,11 @@ function tmmCycleRows(p) {
       rows.push([t('io.Jreq'), fmtU(d.dA / (0.05 * w * w), 'kgm2'), ex('J', d.dA / (0.05 * w * w), 'kgm2', 'J = ΔA / (δ·ω²),   δ = 1/20', [['ΔA', d.dA, 'energy'], ...wv], ['ex.fly'])]);
     }
   }
+  if (S.dyn && S.dyn.R) { // reactions in this link's pairs: now, and the most over the turn
+    const k = Math.floor(cycIndex(S.cyc)) % S.cyc.N, row = (name, arr) => rows.push([`${t('io.R')} ${name}`, `${fmtU(arr[k], 'force')} (${t('io.upTo')} ${fmtU(Math.max(...arr), 'force')})`, ex('R', arr[k], 'force', 'Σ F = m·a,   Σ M = J·ε', wv, ['ex.kstat', 'ex.constW'])]);
+    for (const q of pairsOf(p)) { const arr = S.dyn.R.get(q.id), o = byId(q.a === p.id ? q.b : q.a); if (arr && o) row(o.name, arr); }
+    if (p === S.c) row(t('io.frame'), S.dyn.base);
+  }
   return rows;
 }
 // Grashof's rule for a crank that drives a plain four-bar: crank, coupler, rocker on a frame hinge
@@ -83,7 +89,7 @@ function tmmGrashof(c) {
 function tmmFields(p) {
   if (p.type === 'tcam') { const P = { ...CAM_DEF, ...p }, ang = (key, k) => slider(t(key), 5, 350, 1, () => P[k], v => { p[k] = v; commit(); }, '°');
     return [labelled(t('cam.law'), choice(['cyc', 'harm', 'par', 'lin'].map(k => [k, t('cam.' + k)]), P.law, v => { p.law = v; commit(); })), ang('cam.b1', 'b1'), ang('cam.bd', 'bd'), ang('cam.b2', 'b2')]; }
-  if (p.type === 'tfollow') return [];
+  if (p.type === 'tfollow') return [slider(t('cam.e'), -60, 60, 0.5, () => p.e || 0, v => { p.e = v; commit(); }, unitSym('mm'))];
   const out = [], num = (key, k, lo, hi, step, unit, def = 0) => slider(t(key), lo, hi, step, () => p[k] == null ? def : p[k], v => { p[k] = v; commit(); }, unit);
   if (SLIDES.includes(p.type)) out.push(num('link.F', 'F', 0, 1e6, 1, unitSym('N')), slider(t('link.fw'), 1, 100, 1, () => Math.round((p.fw == null ? 1 : p.fw) * 100), v => { p.fw = v / 100; commit(); }, '%'));
   if (!ty(p, 'pivot', 'guide')) out.push(num('link.m', 'm', 0, 10000, 0.01, unitSym('kg')));

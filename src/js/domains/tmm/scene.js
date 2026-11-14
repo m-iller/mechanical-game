@@ -39,8 +39,8 @@ function tmmMech() {
   for (const q of pairs) {
     const a = byId(q.a), b = byId(q.b); if (!a || !b || (linkFixed(a) && linkFixed(b))) continue;
     if (q.type === 'H') continue;   // a cam places its follower directly, see tmmFollow()
-    if (q.type === 'P') mech.pairs.push({ type: 'P', a: a.id, b: b.id, pa: [0, 0], pb: jointsOf(b)[q.jb] || [0, 0], ua: [1, 0], turn: q.turn });
-    else mech.pairs.push({ type: q.type, a: a.id, b: b.id, pa: jointsOf(a)[q.ja] || [0, 0], pb: jointsOf(b)[q.jb] || [0, 0], turn: q.turn });
+    if (q.type === 'P') mech.pairs.push({ id: q.id, type: 'P', a: a.id, b: b.id, pa: [0, 0], pb: jointsOf(b)[q.jb] || [0, 0], ua: [1, 0], turn: q.turn });
+    else mech.pairs.push({ id: q.id, type: q.type, a: a.id, b: b.id, pa: jointsOf(a)[q.ja] || [0, 0], pb: jointsOf(b)[q.jb] || [0, 0], turn: q.turn });
   }
   return mech;
 }
@@ -48,7 +48,7 @@ function tmmMech() {
    a crank too long for its chain, a rod pulled off its slider's stroke. The links then stay where they were. */
 // a follower sits on its cam: on the ray from the cam's centre along the follower's own direction, at the pitch radius for the cam's angle
 function tmmFollow() {
-  for (const q of pairs) if (q.type === 'H') { const c = byId(q.a), f = byId(q.b); if (!c || !f) continue; const R = c.r + (f.rr || 0) + camS(c, linkTh(c) - f.dir)[0]; f.x = c.x + R * Math.cos(f.dir); f.y = c.y + R * Math.sin(f.dir); }
+  for (const q of pairs) if (q.type === 'H') { const c = byId(q.a), f = byId(q.b); if (!c || !f) continue; const e = f.e || 0, d = camReach(c, f.rr || 0, e) + camS(c, linkTh(c) - f.dir)[0]; f.x = c.x + d * Math.cos(f.dir) - e * Math.sin(f.dir); f.y = c.y + d * Math.sin(f.dir) + e * Math.cos(f.dir); }
 }
 function tmmStep() {
   tmmFollow();
@@ -91,7 +91,7 @@ function tmmStepOk() { const mech = tmmMech(); if (!mech.pairs.length) return tr
 addCheck('cam', () => {
   const out = [];
   for (const c of parts) if (c.type === 'tcam') {
-    const f = parts.find(p => p.type === 'tfollow' && camOf(p) === c), rr = f ? f.rr || 0 : 0, k = camCheck(c, rr);
+    const f = parts.find(p => p.type === 'tfollow' && camOf(p) === c), rr = f ? f.rr || 0 : 0, k = camCheck(c, rr, Math.PI / 6, 720, f ? f.e || 0 : 0);
     if (!camPlan(c).fits) out.push({ level: 'error', code: 'w.camPlan', text: t('w.camPlan', { a: c.name }), ids: [c.id] });
     if (k.alpha > Math.PI / 6 + 1e-9) out.push({ level: 'warn', code: 'w.camAngle', text: t('w.camAngle', { a: c.name, d: fmtNum(k.alpha * 180 / Math.PI, 3), r: fmtNum(k.rmin, 3) }), ids: [c.id] });
     if (rr && k.rho <= rr) out.push({ level: 'warn', code: 'w.camCurv', text: t('w.camCurv', { a: c.name, d: fmtNum(k.rho, 3) }), ids: [c.id] });
@@ -143,7 +143,7 @@ function tmmAttach(ids) {
     });
     if (p.type === 'tfollow' && !camOf(p)) { // a follower dropped beside a cam rides it, pointing away from the cam's centre
       const c = parts.find(o => o.type === 'tcam' && Math.hypot(o.x - p.x, o.y - p.y) < o.r + o.h + (p.rr || 0) + 14);
-      if (c) { p.dir = Math.atan2(p.y - c.y, p.x - c.x); made.push(addPair('H', c, 0, p, 0)); }
+      if (c) { if (!p.e) p.dir = Math.atan2(p.y - c.y, p.x - c.x); made.push(addPair('H', c, 0, p, 0)); }
     }
     const rails = SLIDES.includes(p.type) ? parts.filter(r => RAILS.includes(r.type) && r.id !== p.id).map(r => [r, p]) : RAILS.includes(p.type) ? parts.filter(s => SLIDES.includes(s.type)).map(s => [p, s]) : [];
     for (const [r, s] of rails) {

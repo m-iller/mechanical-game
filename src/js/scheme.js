@@ -93,7 +93,7 @@ function tmmDraw(g, s) {
     case 'pivot': ctx.lineWidth = w; ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(-4.5, 8); ctx.lineTo(4.5, 8); ctx.closePath(); ctx.stroke(); hatchUnder(-6.5, 6.5, 8); break;
     case 'guide': hatchUnder(-g.len / 2, g.len / 2, 0); break;
     case 'tcam': { // the cam's working surface, with a mark at the start of the rise
-      const pts = camProfile(g, (parts.find(p => p.type === 'tfollow' && camOf(p) === g) || {}).rr || 0, 120);
+      const fo = parts.find(p => p.type === 'tfollow' && camOf(p) === g) || {}, pts = camProfile(g, fo.rr || 0, 120, fo.e || 0);
       ctx.beginPath(); pts.forEach((q, k) => k ? ctx.lineTo(q[0], q[1]) : ctx.moveTo(q[0], q[1])); ctx.closePath(); ctx.globalAlpha *= 0.1; ctx.fill(); ctx.globalAlpha /= 0.1; ctx.lineWidth = w; ctx.stroke();
       seg(0, 0, pts[0][0], pts[0][1], thin); break;
     }

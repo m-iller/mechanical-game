@@ -82,11 +82,11 @@ function cycForces(cyc, k, w) {
 function cycDynamics(cyc, w) {
   if (!cyc.ok) return null;
   cyc.span = new Map(cyc.moving.filter(p => SLIDES.includes(p.type)).map(p => [p.id, cycSpan(cyc, k => cycTravel(cyc, k, p))]));
-  const Mb = [], h = TAU / cyc.N;
-  for (let k = 0; k < cyc.N; k++) { const f = cycForces(cyc, k, w); if (!f) return null; Mb.push(f.Mb); }
+  const Mb = [], h = TAU / cyc.N, R = new Map(), base = [];   // R: reaction in each pair over the turn, by pair id; base: the crank's hinge on the frame
+  for (let k = 0; k < cyc.N; k++) { const f = cycForces(cyc, k, w); if (!f) return null; Mb.push(f.Mb); base.push(f.base); f.prs.forEach((q, i) => { if (!R.has(q.id)) R.set(q.id, []); R.get(q.id).push(f.R[i]); }); }
   const mean = Mb.reduce((a, b) => a + b, 0) / cyc.N; let E = 0, lo = 0, hi = 0;
   for (let k = 0; k < cyc.N; k++) { E += (mean - (Mb[k] + Mb[(k + 1) % cyc.N]) / 2) * h; lo = Math.min(lo, E); hi = Math.max(hi, E); }
-  return { Mb, mean, peak: Math.max(...Mb.map(Math.abs)), dA: hi - lo };
+  return { Mb, mean, peak: Math.max(...Mb.map(Math.abs)), dA: hi - lo, R, base };
 }
 // the mean moment each crank needs, for the drive's power balance; inertia averages to nothing over a turn, so the speed does not enter
 function tmmLoads() {

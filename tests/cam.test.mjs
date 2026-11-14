@@ -68,3 +68,19 @@ test('a steep cam is flagged with the base radius that would do', () => {
   const r = bench().run(() => { resetScene(1); const [c] = insertTemplate('valve', 0, 0); c.b1 = 20; c.h = 14; solve(); return warnings.map(w => w.code); });
   assert.ok(r.includes('w.camAngle'));
 });
+
+test('offset follower: tan α = (s′ − e)/(√((r + r_r)² − e²) + s); an offset the right way eases the rise', () => {
+  const cam = { r: 20, h: 12, law: 'lin', b1: 60, bd: 0, b2: 60 }, beta = Math.PI / 3, e = 6;
+  const r = bench().run((c, e) => ({ a0: camPressure(c, 5, 0.3, 0), a: camPressure(c, 5, 0.3, e), s: camS(c, 0.3)[0], k0: camCheck(c, 5).alpha, rise: Math.max(...[...Array(100)].map((_, i) => Math.abs(camPressure(c, 5, i / 100, e)))) }), cam, e);
+  close(r.a, Math.atan2(12 / beta - e, Math.sqrt(25 * 25 - e * e) + r.s), 1e-12);
+  assert.ok(r.a < r.a0 && r.rise < r.k0);
+});
+
+test('offset follower on the bench: the roller centre stays on the pitch curve, e off the line through the cam centre', () => {
+  const r = bench().run(() => {
+    resetScene(1); const [c, f] = insertTemplate('valve', 0, 0); f.e = 6; solve(); const out = [];
+    for (const deg of [0, 40, 100, 200]) { clock = deg * Math.PI / 180 / c.w; tmmStep(); const u = [Math.cos(f.dir), Math.sin(f.dir)], al = f.x * u[0] + f.y * u[1], pe = -f.x * u[1] + f.y * u[0], s = camS(c, linkTh(c) - f.dir)[0]; out.push([al - s, pe]); }
+    return out;
+  });
+  for (const [d0, pe] of r) { close(d0, Math.sqrt(23 * 23 - 36), 1e-9); close(pe, 6, 1e-9); }
+});

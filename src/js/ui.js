@@ -551,6 +551,16 @@ function hydFields(p) {
   if (p.type !== 'hnode' || true) out.push(rowOf(btn(t('hy.lay'), () => { pipeDraft = { a: null, pts: [], cur: null }; sel = new Set(); ui(); })));
   return out;
 }
+/* A click in the side view while a pipe is being laid, as a point of the bench: the port nearest in x on the layer under the pointer,
+   or else a corner at that x, in line with the last point (the side view cannot say how deep it is). */
+function sidePoint(p) {
+  const x = (p.x - W / 2) / view.scale + view.cx, l = Math.round(((baseY() - p.y) / view.scale - FW / 2) / LP), r = Math.max(3.5, 10 / view.scale), d = pipeDraft; let best = null;
+  const last = d.a == null ? { y: 0 } : d.pts.length ? { y: d.pts[d.pts.length - 1][1] } : portPos(byId(d.a), d.pa);
+  // ports that fall on one x are told apart by which lies nearer the last point in depth
+  for (const g of parts) if (g.layer === l && shown(g)) portsOf(g).forEach((_, k) => { const q = portPos(g, k), dx = Math.abs(q.x - x), rank = dx + 1e-3 * Math.abs(q.y - last.y); if (dx < r && (!best || rank < best.rank) && !(d.a === g.id && d.pa === k)) best = { rank, q }; });
+  if (best) return best.q;
+  return { x, y: last.y };
+}
 // a click while a pipe is being laid: a port starts or ends it, another pipe gets a tee, anything else is a corner
 function pipeClick(w) {
   const r = Math.max(3.5, 10 / view.scale), port = portAt(w, r), d = pipeDraft;
@@ -711,7 +721,7 @@ cv.addEventListener('pointerdown', e => {
   if (pts.size === 2) { drag = pan = boxSel = null; const [a, b] = [...pts.values()]; pinch = { d: Math.hypot(a.x - b.x, a.y - b.y) || 1, scale: view.scale, w: toWorld((a.x + b.x) / 2, (a.y + b.y) / 2), side: (a.y + b.y) / 2 < bandH() }; return; }
   const side = p.y < bandH();
   if (side && p.x < 46) { const l = Math.floor((baseY() - p.y) / view.scale / LP + 0.2); if (l >= 0 && l < layerCount) { setActive(l); return; } }   // a layer's letter in the side view makes it active
-  if (pipeDraft) { if (!side) pipeClick(toWorld(p.x, p.y)); return; }
+  if (pipeDraft) { pipeClick(side ? sidePoint(p) : toWorld(p.x, p.y)); return; }
   const g = hit(p);
   if (linkDraft) { // building a belt or chain: clicks add and remove wheels
     if (g && g.type === (linkDraft.kind === 'belt' ? 'pulley' : 'sprocket') && g.layer === byId(linkDraft.ids[0]).layer) { const i = linkDraft.ids.indexOf(g.id); if (i < 0) linkDraft.ids.push(g.id); else if (linkDraft.ids.length > 1) linkDraft.ids.splice(i, 1); ui(); }

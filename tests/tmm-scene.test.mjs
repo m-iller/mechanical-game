@@ -167,3 +167,16 @@ test('four-bar: smallest transmission angle from the cosine rule at the folded p
   const mu = d => { const m = Math.acos((70 * 70 + 50 * 50 - d * d) / (2 * 70 * 50)); return m > Math.PI / 2 ? Math.PI - m : m; };
   close(r, Math.min(mu(60), mu(100)), 2e-3);
 });
+
+test('reactions in the pairs of the slider-crank: with a force on the slider and no masses, the rod carries F/cos ϑ and the guide F·tan ϑ', () => {
+  const r = bench().run(() => {
+    resetScene(1); const [c, rod, g, sl] = insertTemplate('slidercrank', 0, 0); sl.F = 500; solve();
+    const cyc = tmmCycle(c), d = cycDynamics(cyc, 0), ids = { rodSl: pairs.find(q => q.type === 'R' && (q.a === sl.id || q.b === sl.id)).id, guide: pairs.find(q => q.type === 'P').id, crRod: pairs.find(q => q.type === 'R' && (q.a === c.id || q.b === c.id)).id }, rows = [];
+    for (const k of [5, 20, 40]) rows.push([cycAngle(cyc, k, rod.id), cycD(cyc, k, i => cycTravel(cyc, i, sl))[1], d.R.get(ids.rodSl)[k], d.R.get(ids.guide)[k], d.R.get(ids.crRod)[k], d.base[k]]);
+    return rows;
+  });
+  for (const [th, d1, Rrod, Rguide, Rcr, Rbase] of r) {
+    const F = d1 > 0 ? 500 : 0, c = Math.abs(Math.cos(th));       // the rod is a two-force link
+    close(Rrod, F / c, 2e-3, 1e-6); close(Rguide, F * Math.abs(Math.tan(th)), 2e-3, 1e-6); close(Rcr, Rrod, 1e-9, 1e-9); close(Rbase, Rrod, 1e-9, 1e-9);
+  }
+});

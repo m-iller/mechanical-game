@@ -9,6 +9,8 @@
                 and a straight line in s from (sk, Mk) to the catalogue starting torque at s = 1
      dc         DC motor with a straight characteristic through the starting torque and the nominal point
      stepper    holds the commanded speed while the load stays under the pull-out torque min(M_hold, P/ω), otherwise stalls
+     ice        piston engine: M = M_max·(0.75 + x − x²), x = ω/ω_max, cut off by the governor above ω_max
+     power      constant power up to a speed limit: M = P/ω
    Loads (l.kind): const, linear (M ∝ ω), quad (M ∝ ω², fans and pumps), table of [rpm, N·m] points. */
 'use strict';
 
@@ -21,6 +23,12 @@ function sourceOf(m) {
   const kind = m.kind || 'speed', wNom = Math.max(1e-6, Math.abs(m.n || m.rpm || 0) * W_RPM);
   if (kind === 'speed') { const w0 = Math.abs(m.rpm) * W_RPM; return { kind, ideal: true, w0, wNom: w0, Mnom: m.tq, M: () => m.tq }; }
   if (kind === 'torque') return { kind, ideal: false, w0: wNom, wNom, Mnom: m.tq, M: w => w <= wNom ? m.tq : 0 };
+  if (kind === 'ice') { // piston engine: torque peaks at half the top speed, the governor cuts it off just above the top speed
+    return { kind, ideal: false, w0: 1.08 * wNom, wNom, Mnom: m.tq, M: w => { const x = w / wNom; return x <= 1 ? m.tq * (0.75 + x - x * x) : Math.max(0, m.tq * 0.75 * (1.08 - x) / 0.08); } };
+  }
+  if (kind === 'power') { // a machine that gives its power at any speed (a turbine fed with a set flow): M = P/ω up to the speed limit
+    const Mn = m.P / wNom; return { kind, ideal: false, w0: wNom, wNom, Mnom: Mn, M: w => w <= wNom ? m.P / Math.max(w, 0.05 * wNom) : 0 };
+  }
   const Mnom = m.P / wNom, ks = m.ks || 1.5;
   if (kind === 'dc') {
     const Ms = Math.max(ks, 1.05) * Mnom, w0 = wNom / (1 - Mnom / Ms);

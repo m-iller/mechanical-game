@@ -10,22 +10,28 @@ const CYC_N = 180;
 const cycCache = new Map();                        // crank id -> { key, cyc }
 const linkCentre = p => BAR.includes(p.type) ? [p.len / 2, 0] : p.type === 'tplate' ? [p.r, 0] : [0, 0];
 const linkJ = p => (p.m || 0) * (BAR.includes(p.type) ? (p.len / 1000) ** 2 / 12 : p.type === 'tplate' ? (p.r / 1000) ** 2 / 2 : 0);   // about the centre of mass, kg·m²
-const crankOf = p => { const g = tmmInfo.of.get(p.id); return g ? g.ids.map(byId).find(q => q && q.type === 'tcrank') : null; };
+// the link that drives a mechanism: its crank, or the drive part that carries its pin
+const crankOf = p => { const g = tmmInfo.of.get(p.id); return g ? g.ids.map(byId).find(q => q && q.type === 'tcrank') || (g.wheels || []).map(byId).find(Boolean) || null : null; };
+const tmmCranks = () => [...parts.filter(p => p.type === 'tcrank'), ...pinWheels()];
+// other driven frames of the same mechanism turn with the crank in the ratio of their speeds
+const turnsWith = (o, crank) => o !== crank && crank.w && o.w && (!isLink(o) || isDriver(o)) ? o.w / crank.w : 0;
 
 function tmmCycle(crank) {
   const sign = crank.w < 0 ? -1 : 1, r3 = v => Math.round(v * 1000) / 1000;
-  const key = JSON.stringify([crank.id, sign, parts.filter(isLink).map(p => [p.id, p.type, p.len, p.r, p.n, p.F, p.fw, p.m, linkFixed(p) ? [r3(p.x), r3(p.y), p === crank ? 0 : r3(linkTh(p))] : 0]), pairs.map(q => [q.type, q.a, q.ja, q.b, q.jb, q.turn])]);
+  const key = JSON.stringify([crank.id, sign, parts.filter(p => isLink(p) || pairs.some(q => q.pa && q.a === p.id)).map(p => [p.id, p.type, p.len, p.r, p.n, p.F, p.fw, p.m, linkFixed(p) ? [r3(p.x), r3(p.y), p === crank ? 0 : r3(linkTh(p) - turnsWith(p, crank) * linkTh(crank))] : 0]), pairs.map(q => [q.type, q.a, q.ja, q.b, q.jb, q.turn, q.pa])]);
   const hit = cycCache.get(crank.id); if (hit && hit.key === key && hit.cyc.ok) return hit.cyc;
   const mech = tmmMech(), entry = mech.links.find(l => l.id === crank.id), cyc = { ok: false, N: CYC_N, sign, Q: [], mech, crank, moving: mech.moving };
   if (!entry || !mech.moving.length || !mech.pairs.length) { cycCache.set(crank.id, { key, cyc }); return cyc; }
   const lk = linkage(mech), th0 = entry.pose[2]; let q = mech.q0.slice();
   cyc.th0 = th0; cyc.at = lk.at; cyc.pose = lk.pose;
+  const co = mech.links.filter(l => l.ground && l !== entry).map(l => ({ l, id: l.id, x: l.pose[0], y: l.pose[1], th0: l.pose[2], k: turnsWith(byId(l.id), crank) })).filter(o => o.k);
+  cyc.drv = new Map([[crank.id, { x: crank.x, y: crank.y, th0, k: 1 }], ...co.map(o => [o.id, o])]);
   for (let k = 0; k < CYC_N; k++) {
-    entry.pose[2] = th0 + sign * k * TAU / CYC_N;
+    entry.pose[2] = th0 + sign * k * TAU / CYC_N; for (const o of co) o.l.pose[2] = o.th0 + o.k * sign * k * TAU / CYC_N;
     const r = solveNL(lk.eqs, q, { tol: 1e-10, max: 40 }); if (r.res > 1e-4) { cyc.failAt = k; break; }
     q = r.x; cyc.Q.push(q.slice());
   }
-  entry.pose[2] = th0; cyc.ok = cyc.Q.length === CYC_N; cyc.entry = entry;
+  entry.pose[2] = th0; for (const o of co) o.l.pose[2] = o.th0; cyc.ok = cyc.Q.length === CYC_N; cyc.entry = entry;
   cycCache.set(crank.id, { key, cyc }); return cyc;
 }
 // which sample the crank is at now, as a fraction index
@@ -34,10 +40,10 @@ const cycIndex = cyc => mod((linkTh(cyc.crank) - cyc.th0) * cyc.sign / TAU, 1) *
 function cycD(cyc, k, f) { const N = cyc.N, h = TAU / N, a = f(mod(k - 1, N)), b = f(k), c = f(mod(k + 1, N)); return [b, (c - a) / (2 * h), (c - 2 * b + a) / (h * h)]; }
 // world position of a point of a link at sample k (the crank and the frame included)
 function cycPoint(cyc, k, id, local) {
-  if (id === cyc.crank.id) { const th = cyc.th0 + cyc.sign * k * TAU / cyc.N, c = Math.cos(th), s = Math.sin(th); return [cyc.crank.x + c * local[0] - s * local[1], cyc.crank.y + s * local[0] + c * local[1]]; }
+  const d = cyc.drv.get(id); if (d) { const th = d.th0 + d.k * cyc.sign * k * TAU / cyc.N, c = Math.cos(th), s = Math.sin(th); return [d.x + c * local[0] - s * local[1], d.y + s * local[0] + c * local[1]]; }
   return cyc.at(cyc.Q[k], id, local);
 }
-const cycAngle = (cyc, k, id) => id === cyc.crank.id ? cyc.th0 + cyc.sign * k * TAU / cyc.N : cyc.pose(cyc.Q[k], id)[2];
+const cycAngle = (cyc, k, id) => { const d = cyc.drv.get(id); return d ? d.th0 + d.k * cyc.sign * k * TAU / cyc.N : cyc.pose(cyc.Q[k], id)[2]; };
 // the rail a slider rides on, and its travel along it at sample k
 const railOf = p => { const q = pairs.find(x => x.type === 'P' && x.b === p.id); return q ? byId(q.a) : null; };
 function cycTravel(cyc, k, p) { const r = railOf(p), P = cycPoint(cyc, k, p.id, [0, 0]); if (!r) return P[0]; const th = cycAngle(cyc, k, r.id), o = cycPoint(cyc, k, r.id, [0, 0]); return (P[0] - o[0]) * Math.cos(th) + (P[1] - o[1]) * Math.sin(th); }
@@ -90,10 +96,11 @@ function cycDynamics(cyc, w) {
 }
 // the mean moment each crank needs, for the drive's power balance; inertia averages to nothing over a turn, so the speed does not enter
 function tmmLoads() {
-  for (const p of parts) if (p.type === 'tcrank') {
+  for (const p of parts) if (p._tmb) { delete p.mb; delete p._tmb; }
+  for (const p of tmmCranks()) {
     delete p.mb;
     if (!parts.some(q => SLIDES.includes(q.type) && q.F)) continue;
-    const cyc = tmmCycle(p), d = cycDynamics(cyc, 0); if (d && d.mean > 1e-9) p.mb = d.mean;
+    const cyc = tmmCycle(p), d = cycDynamics(cyc, 0); if (d && d.mean > 1e-9) { p.mb = d.mean; if (!isLink(p)) p._tmb = true; }
   }
 }
 // moment of inertia of the flywheels turning with a crank, reduced to its shaft, kg·m². A flywheel is a steel disc of the layer's thickness unless J is given.
@@ -102,7 +109,7 @@ function crankJ(crank) { let J = 0; if (crank.w) for (const f of parts) if (f.ty
 // a steady crank speed is assumed everywhere; without enough flywheel that assumption fails
 addCheck('flywheel', () => {
   const out = [];
-  for (const p of parts) if (p.type === 'tcrank' && p.mb && p.w) {
+  for (const p of tmmCranks()) if (p.mb && p.w) {
     const cyc = tmmCycle(p), w = Math.abs(p.w) * RPM, d = cycDynamics(cyc, w); if (!d) continue;
     const J = crankJ(p), delta = J > 0 ? d.dA / (J * w * w) : Infinity;
     if (delta > 0.3) out.push({ level: 'warn', code: 'w.fluct', text: t('w.fluct', { a: p.name, d: isFinite(delta) ? fmtNum(delta, 2) : '∞' }), ids: [p.id] });

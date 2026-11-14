@@ -121,6 +121,8 @@ function specRows(p) {
   }
   if (p.type === 'rack') { add('sp.v', o.w ? `${fmt(Math.abs(o.w * RPM))} ${t('u.mms')}` : t('s.idle')); add('sp.force', tqText(p, o)); }
   if (p.type === 'carrier') r.push(...planetRows(p));
+  for (const q of pairs) if (q.pa && q.a === p.id) { const b = byId(q.b); r.push([`${t('tmm.pin')} ${b ? b.name : ''}`, pinR(q) > 1e-6 ? `r ${fmtNum(pinR(q), 3)} ${t('u.mm')}` : t('tmm.onAxis')]); }
+  if (p._tmb && p.mb) r.push([t('tmm.need'), `${fmtT(p.mb)} ${t('u.Nm')}`, ex('M', p.mb, 'Nm', 'M = (1/2π)·∮ M_b dφ', [], ['ex.kineto'])]);
   if (p.type === 'rack') {} else { add('sp.n', p.und && !p.w ? t('s.free') : rpmText(o.w)); if (d && o.w) add('sp.vPitch', `${fmt(Math.PI * d * Math.abs(o.w) / 60)} ${t('u.mms')}`); add('sp.torque', tqText(p, o)); }
   return r;
 }

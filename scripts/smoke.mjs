@@ -45,6 +45,7 @@ if (await page.evaluate(() => sel.size)) fail('a locked layer let a part be pick
 // side view: dragging a part moves it along x and lifts it between layers; a shaft stretches by its end
 await page.evaluate(() => { resetScene(3); addPart('spur', { x: 0, y: 0, layer: 0, z: 20 }); addPart('shaft', { x: 60, y: 0, l0: 0, l1: 0 }); solve(); viewMode = 'both'; fit(); setActive(0); });
 const sidePos = (x, layer, dz = 0) => page.evaluate(([x, layer, dz]) => { const r = cv.getBoundingClientRect(); return { x: r.left + W / 2 + (x - view.cx) * view.scale, y: r.top + baseY() - (layer * LP + FW / 2 + dz) * view.scale }; }, [x, layer, dz]);
+const shotGC = process.env.SHOT_GC;
 const dragTo = async (a, b) => { await page.mouse.move(a.x, a.y); await page.mouse.down(); await page.mouse.move((a.x + b.x) / 2, (a.y + b.y) / 2, { steps: 4 }); await page.mouse.move(b.x, b.y, { steps: 4 }); await page.mouse.up(); };
 await dragTo(await sidePos(0, 0), await sidePos(25, 2));
 let moved = await page.evaluate(() => { const g = parts[0]; return [Math.round(g.x), g.layer, activeLayer]; });
@@ -156,6 +157,14 @@ await page.waitForTimeout(300);
   await page.click('.panel section:nth-child(4) > h2'); let cl = await page.evaluate(() => getComputedStyle(document.getElementById('layers')).display); if (cl !== 'none') fail('a folded section still shows: ' + cl);
   await page.click('.panel section:nth-child(4) > h2');
 }
+// the far joint of a rod dragged onto a gear is pinned there, and the gear then carries the rod round
+await page.evaluate(() => { resetScene(1); const g = addPart('spur', { x: 0, y: 0, z: 40, motor: { rpm: 30, tq: 1 } }), pv = addPart('pivot', { x: 90, y: 0 }), rk = addPart('trocker', { x: 90, y: 0, len: 50, dir: -Math.PI / 2 }), rod = addPart('trod', { x: 90, y: -50, len: 60, dir: Math.PI }); tmmAttach([rk.id, rod.id]); solve(); viewMode = 'top'; running = false; fit(); ui(); });
+await dragTo(await topPos(30, -50), await topPos(20, -15)); await page.waitForTimeout(200);
+{ const st = await page.evaluate(() => ({ pin: pairs.filter(q => q.pa).map(q => [byId(q.a).type, Math.round(Math.hypot(...q.pa))]), W: tmmInfo.groups.map(g => [g.W, g.drivers]), ok: tmmInfo.ok, warn: warnings.filter(w => w.level !== 'info').map(w => w.code) }));
+  if (JSON.stringify(st.pin) !== '[["spur",25]]' || JSON.stringify(st.W) !== '[[1,1]]' || !st.ok || st.warn.length) fail('pinning a rod to a gear: ' + JSON.stringify(st)); }
+await page.evaluate(() => { resetScene(1); insertTemplate('gearcrank', 0, 0); solve(); running = true; fit(); ui(); }); await page.waitForTimeout(400);
+s = await state(); if (s.lock || s.warnings.some(w => w[0] !== 'info') || await page.evaluate(() => tmmStuck)) fail('gearcrank: ' + s.lock + JSON.stringify(s.warnings));
+if (shotGC) await page.screenshot({ path: shotGC });
 // laying a pipe in the side view: port on one layer, port on another
 await page.evaluate(() => { resetScene(2); addPart('htank', { x: 0, y: 0, layer: 0 }); addPart('hpump', { x: 60, y: 0, layer: 1, q: 5, motor: { rpm: 1000, tq: 20 } }); solve(); viewMode = 'both'; fit(); setActive(1); pipeDraft = { a: null, pts: [], cur: null }; ui(); });
 const sa = await sidePos(0, 0), sb = await sidePos(49, 1);

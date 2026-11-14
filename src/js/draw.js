@@ -281,6 +281,11 @@ function drawTop(dpr, s, bh) {
       ctx.strokeStyle = C.paper; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(g.x, g.y); ctx.lineTo(g.x + 3 * Math.cos(an), g.y + 3 * Math.sin(an)); ctx.stroke();
     }
   }
+  for (const q of pairs) if (q.pa) { // a pin on a drive part, with the crank arm it makes
+    const w = byId(q.a); if (!w || !shown(w)) continue; const P = toWorldOf(w, q.pa); ctx.globalAlpha = onActive(w) ? 1 : FADE;
+    if (pinR(q) > 1e-6) { ctx.strokeStyle = C.ink; ctx.lineWidth = 2 / s; ctx.beginPath(); ctx.moveTo(w.x, w.y); ctx.lineTo(P.x, P.y); ctx.stroke(); }
+    dot(P.x, P.y, 2, C.ink);
+  }
   ctx.globalAlpha = 1;
   if (showDims) { // centre distances of every mesh
     ctx.save(); ctx.strokeStyle = C.select; ctx.fillStyle = C.select; ctx.lineWidth = 1 / s;

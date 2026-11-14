@@ -151,6 +151,12 @@ const TEMPLATES = {
     const f = addPart('tfollowr', { x: O.x, y: O.y, layer: L, len: Math.hypot(x - O.x, y - 23 - O.y), rr: 5, dir: a });
     tmmAttach([f.id]); return [c, f];
   } },
+  // a motor turns a pinion, the pinion a gear; a rod is pinned to the gear 20 mm off its axis and works a slider: the gear is the crank
+  gearcrank: { layers: 1, build(x, y, L) {
+    const m = addPart('spur', { x: x - 60, y, layer: L, z: 15, motor: { rpm: 240, tq: 2 } }), g = addPart('spur', { x, y, layer: L, z: 45 }), r = 20, l = 80;
+    const rod = addPart('trod', { x: x + r, y, layer: L, len: l, dir: 0 }), gd = addPart('guide', { x: x + 100, y, layer: L, len: 110, dir: 0 }), sl = addPart('tslider', { x: x + r + l, y, layer: L, dir: 0 });
+    tmmAttach([rod.id, sl.id]); return [m, g, rod, gd, sl];
+  } },
   // four-bar: crank 20, coupler 70, rocker 50, frame 80 — a crank-rocker by Grashof's rule
   fourbar: { layers: 1, build(x, y, L) {
     const a = 20, b = 70, c = 50, d = 80, B = { x, y: y - a }, dx = x + d - B.x, dy = y - B.y, f = Math.hypot(dx, dy), k = (b * b - c * c + f * f) / (2 * f), h = Math.sqrt(b * b - k * k);

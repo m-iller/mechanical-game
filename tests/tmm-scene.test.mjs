@@ -180,3 +180,39 @@ test('reactions in the pairs of the slider-crank: with a force on the slider and
     close(Rrod, F / c, 2e-3, 1e-6); close(Rguide, F * Math.abs(Math.tan(th)), 2e-3, 1e-6); close(Rcr, Rrod, 1e-9, 1e-9); close(Rbase, Rrod, 1e-9, 1e-9);
   }
 });
+
+/* ---- joints pinned to parts of the drive ---- */
+test('a rod pinned to a gear makes the gear a crank: the slider follows r·cos φ + √(l² − r²·sin²φ) at the gear\'s own speed', () => {
+  const r = bench().run(() => {
+    resetScene(1); const [m, g, rod, gd, sl] = insertTemplate('gearcrank', 0, 0); solve();
+    const out = { pairs: pairs.map(q => [q.type, q.a === g.id, q.pa || null]), group: tmmInfo.groups.map(x => [x.n, x.p5, x.W, x.drivers]), warn: warnings.filter(w => w.level !== 'info').map(w => w.code), wg: g.w, wm: m.w, crank: crankOf(sl) === g, xs: [] };
+    for (let k = 0; k <= 36; k++) { clock = k * (Math.PI / 18) / Math.abs(g.w); const ok = tmmStep(); out.xs.push([angle(g), ok, sl.x, sl.y]); }
+    const cyc = tmmCycle(g); out.cyc = cyc.ok; const sp = cycSpan(cyc, k => cycTravel(cyc, k, sl)); out.stroke = sp.max - sp.min;
+    return out;
+  });
+  assert.deepEqual(r.pairs.filter(q => q[1]), [['R', true, [20, 0]]]); assert.deepEqual(r.group, [[3, 4, 1, 1]]); assert.deepEqual(r.warn, []);
+  close(Math.abs(r.wg), 80, 1e-9); assert.ok(r.crank && r.cyc); close(r.stroke, 40, 1e-6);
+  for (const [phi, ok, x, y] of r.xs) { assert.ok(ok); close(x, 20 * Math.cos(phi) + Math.sqrt(80 * 80 - (20 * Math.sin(phi)) ** 2), 1e-6); close(y, 0, 0, 1e-6); }
+});
+
+test('the gear with a pin loads its motor exactly as the same slider-crank with a crank link would', () => {
+  const r = bench().run(() => {
+    resetScene(1); const [m, g, rod, gd, sl] = insertTemplate('gearcrank', 0, 0); sl.F = 400; solve(); const a = { mb: g.mb, M: power.src.get(m.id).M };
+    resetScene(1); const c = addPart('tcrank', { x: 0, y: 0, len: 20, dir: 0, motor: { rpm: 80, tq: 2 } }), rod2 = addPart('trod', { x: 20, y: 0, len: 80, dir: 0 }), gd2 = addPart('guide', { x: 100, y: 0, len: 110, dir: 0 }), s2 = addPart('tslider', { x: 100, y: 0, dir: 0 });
+    tmmAttach([rod2.id, s2.id]); s2.F = 400; solve();
+    return { a, b: c.mb };
+  });
+  close(r.a.mb, r.b, 1e-6); close(r.b, 400 * 0.04 / (2 * Math.PI), 1e-3);       // F·2r / 2π: the work of one stroke spread over the turn
+  close(r.a.M, r.a.mb / 3 / 0.98, 1e-3);                                         // through the 15 : 45 mesh
+});
+
+test('a joint dropped on the axis of a shaft is a plain hinge there, and a pin survives save and load', () => {
+  const r = bench().run(() => {
+    resetScene(1); const sh = addPart('shaft', { x: 0, y: 0, l0: 0, l1: 0 }), rk = addPart('trocker', { x: 0.8, y: 0.5, len: 30, dir: 1 });
+    const made = tmmAttach([rk.id]); solve(); const one = { pa: made.map(q => q.pa), W: tmmInfo.groups.map(g => [g.n, g.p5, g.W, g.drivers]) };
+    resetScene(1); const [m, g, rod, gd, sl] = insertTemplate('gearcrank', 0, 0); solve(); const d = JSON.parse(JSON.stringify(serialize())); load(d); place(); solve();
+    return { one, pa: pairs.filter(q => q.pa).map(q => q.pa), ok: tmmInfo.ok };
+  });
+  assert.deepEqual(r.one.pa, [[0, 0]]); assert.deepEqual(r.one.W, [[1, 1, 1, 0]]);
+  assert.deepEqual(r.pa, [[20, 0]]); assert.ok(r.ok);
+});

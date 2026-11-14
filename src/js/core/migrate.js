@@ -1,0 +1,23 @@
+/* Gear Bench core — scene format versions. A saved scene carries v; MIGRATIONS[n] turns version n into n + 1.
+   Loading runs the chain, so every older file still opens. No DOM here.
+     v2  Gear Bench 2.x: layerCount + hidden[], motor { rpm, tq }
+     v3  layers [{ name, visible, locked }], motor.kind, loads on parts */
+'use strict';
+
+const SCENE_V = 3;
+const MIGRATIONS = {
+  2(d) {
+    const n = Math.max(1, d.layerCount || 1), hidden = new Set(d.hidden || []), layers = [];
+    for (let l = 0; l < n; l++) layers.push({ name: '', visible: !hidden.has(l), locked: false });
+    const parts = (d.parts || []).map(p => p.motor ? { ...p, motor: { kind: 'speed', ...p.motor } } : p);
+    const { layerCount, hidden: h, ...rest } = d;
+    return { ...rest, v: 3, layers, parts };
+  },
+};
+function migrate(d) {
+  if (!d || !Array.isArray(d.parts)) return null;
+  let v = d.v || 2;                       // files older than the version field are v2-shaped
+  if (v > SCENE_V) return null;           // written by a newer app
+  while (v < SCENE_V) { d = MIGRATIONS[v](d); v = d.v; }
+  return d;
+}

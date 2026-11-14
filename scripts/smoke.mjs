@@ -42,6 +42,18 @@ await page.evaluate(() => { lockedLayers.add(1); pick([]); });
 await page.mouse.click(centre.x - 12 * (await page.evaluate(() => view.scale)), centre.y);
 if (await page.evaluate(() => sel.size)) fail('a locked layer let a part be picked');
 
+// side view: dragging a part moves it along x and lifts it between layers; a shaft stretches by its end
+await page.evaluate(() => { resetScene(3); addPart('spur', { x: 0, y: 0, layer: 0, z: 20 }); addPart('shaft', { x: 60, y: 0, l0: 0, l1: 0 }); solve(); viewMode = 'both'; fit(); setActive(0); });
+const sidePos = (x, layer, dz = 0) => page.evaluate(([x, layer, dz]) => { const r = cv.getBoundingClientRect(); return { x: r.left + W / 2 + (x - view.cx) * view.scale, y: r.top + baseY() - (layer * LP + FW / 2 + dz) * view.scale }; }, [x, layer, dz]);
+const dragTo = async (a, b) => { await page.mouse.move(a.x, a.y); await page.mouse.down(); await page.mouse.move((a.x + b.x) / 2, (a.y + b.y) / 2, { steps: 4 }); await page.mouse.move(b.x, b.y, { steps: 4 }); await page.mouse.up(); };
+await dragTo(await sidePos(0, 0), await sidePos(25, 2));
+let moved = await page.evaluate(() => { const g = parts[0]; return [Math.round(g.x), g.layer, activeLayer]; });
+if (moved.join() !== '25,2,2') fail('side-view drag gave x, layer, active = ' + moved);
+await page.evaluate(() => setActive(0));
+await dragTo(await sidePos(60, 0, 4), await sidePos(60, 2, 4));
+moved = await page.evaluate(() => { const s = parts[1]; return [s.l0, s.l1]; });
+if (moved.join() !== '0,2') fail('stretching a shaft in the side view gave span ' + moved);
+
 // power balance: the conveyor demo runs, shows explained figures, and the "where from" box opens
 await page.evaluate(() => { resetScene(5); const m = insertTemplate('conveyor', 0, 0); solve(); fit(); pick([m[m.length - 1].id]); });
 await page.waitForTimeout(60);

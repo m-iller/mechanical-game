@@ -460,6 +460,15 @@ cv.addEventListener('pointerdown', e => {
     return;
   }
   if (g && e.shiftKey) { pick([g.id], true); return; }
+  if (g && side) { // side view: slide along x, lift between layers, pull a shaft by its ends
+    if (!sel.has(g.id)) pick([g.id]);
+    const x = (p.x - W / 2) / view.scale + view.cx, z = (baseY() - p.y) / view.scale, group = new Set(selParts());
+    for (const q of [...group]) if (isShaft(q)) for (const c of onShaft(q)) group.add(c);
+    if ([...group].some(q => !isShaft(q) && lockedLayers.has(q.layer))) return;
+    const mode = !isShaft(g) ? 'move' : g.l1 * LP + FW - z < LP * 0.45 ? 'top' : z - g.l0 * LP < LP * 0.45 ? 'bot' : 'move';
+    drag = { g, side: true, mode, dx: x - g.x, dy: 0, others: mode === 'move' ? [...group].filter(q => q !== g && !q.mount).map(q => ({ q, ox: q.x - g.x, oy: q.y - g.y })) : [], sx: p.x, sy: p.y, moved: false, grabL: Math.round((z - FW / 2) / LP) };
+    cv.classList.add('dragging'); return;
+  }
   if (g && !side) {
     if (!sel.has(g.id)) pick([g.id]);
     const w = toWorld(p.x, p.y), group = new Set(selParts());
@@ -486,6 +495,7 @@ cv.addEventListener('pointermove', e => {
     if (!drag.moved && Math.hypot(p.x - drag.sx, p.y - drag.sy) < 4) return;
     const g = drag.g, w = toWorld(p.x, p.y);
     if (!drag.moved) { drag.moved = true; freeze(); if (g.mount) delete g.mount; }
+    if (drag.side) { sideDrag(p); changed(); return; }
     const s = drag.others.length ? { x: w.x - drag.dx, y: w.y - drag.dy } : snap(g, w.x - drag.dx, w.y - drag.dy);
     g.x = s.x; g.y = s.y; if (s.dir != null) g.dir = s.dir; drag.mount = s.mount || null;
     for (const o of drag.others) { o.q.x = g.x + o.ox; o.q.y = g.y + o.oy; }
@@ -495,6 +505,25 @@ cv.addEventListener('pointermove', e => {
     if (pan.moved) { view.cx = pan.cx - (p.x - pan.sx) / view.scale; if (!pan.side) view.cy = pan.cy - (p.y - pan.sy) / view.scale; }
   }
 });
+// Dragging in the side view (the x–z projection of the same model): x follows the pointer, the layer follows its height.
+function sideDrag(p) {
+  const d = drag, g = d.g, x = (p.x - W / 2) / view.scale + view.cx, z = (baseY() - p.y) / view.scale;
+  const L = Math.max(0, Math.min(layerCount - 1, Math.round((z - FW / 2) / LP)));
+  if (d.mode === 'top') { g.l1 = Math.max(g.l0, L); return; }
+  if (d.mode === 'bot') { g.l0 = Math.min(g.l1, L); g.layer = g.l0; return; }
+  let nx = x - d.dx;
+  if (!d.others.length) { // onto an axis that stands in the same plane
+    const near = Math.max(3, 8 / view.scale), ax = parts.find(o => o !== g && isVert(o) && !o.mount && Math.abs(o.y - g.y) < COAX && Math.abs(o.x - nx) < near);
+    if (ax) nx = ax.x;
+  }
+  g.x = nx; for (const o of d.others) o.q.x = g.x + o.ox;
+  const all = [g, ...d.others.map(o => o.q)], lo = Math.min(...all.map(q => isShaft(q) ? q.l0 : q.layer)), hi = Math.max(...all.map(q => isShaft(q) ? q.l1 : q.layer));
+  const k = Math.max(-lo, Math.min(layerCount - 1 - hi, L - d.grabL));
+  if (k) {
+    for (const q of all) { if (isShaft(q)) { q.l0 += k; q.l1 += k; q.layer = q.l0; } else q.layer += k; }
+    d.grabL += k; activeLayer = isShaft(g) ? Math.max(g.l0, Math.min(g.l1, activeLayer + k)) : g.layer;
+  }
+}
 const up = e => {
   pts.delete(e.pointerId); clearTimeout(holdTimer);
   if (boxSel) {

@@ -21,7 +21,7 @@ const STR = {
     'tpl.rack': 'Rack and pinion', 'tpl.diff': 'Differential with brake', 'tpl.clutch': 'Clutch between two shafts', 'tpl.piston': 'Crank and piston', 'tpl.geneva': 'Geneva drive',
     'add.onLayer': 'on layer {l}',
     'motor.none': 'No motor yet. Select a part and switch "Motor" on.', 'motor.speed': 'Speed', 'motor.torque': 'Torque',
-    'layer.shown': 'shown', 'layer.hidden': 'hidden', 'layer.up': 'Move layer up', 'layer.down': 'Move layer down', 'layer.delete': 'Delete layer', 'layer.confirm': 'Delete with {n} parts?',
+    'layer.shown': 'Shown: hide layer', 'layer.hidden': 'Hidden: show layer', 'layer.up': 'Move layer up', 'layer.down': 'Move layer down', 'layer.delete': 'Delete layer', 'layer.confirm': 'Delete with {n} parts?',
     'layer.solo': 'Only active layer', 'layer.showAll': 'Show all layers',
     'sel.none': 'none', 'sel.many': '{n} parts', 'sel.hint': 'Click a part to edit it. Hold on empty space, then drag, to select an area. Shift-click adds to the selection.',
     'sel.layer': 'Layer', 'sel.dir': 'Direction', 'sel.onCarrier': 'Rides on a pin of {a}.',
@@ -72,7 +72,7 @@ const STR = {
     'tpl.rack': 'Реечная передача', 'tpl.diff': 'Дифференциал с тормозом', 'tpl.clutch': 'Муфта между двумя валами', 'tpl.piston': 'Кривошип с поршнем', 'tpl.geneva': 'Мальтийский механизм',
     'add.onLayer': 'на слой {l}',
     'motor.none': 'Мотора пока нет. Выберите деталь и включите «Мотор».', 'motor.speed': 'Скорость', 'motor.torque': 'Момент',
-    'layer.shown': 'виден', 'layer.hidden': 'скрыт', 'layer.up': 'Поднять слой', 'layer.down': 'Опустить слой', 'layer.delete': 'Удалить слой', 'layer.confirm': 'Удалить с {n} дет.?',
+    'layer.shown': 'Виден: скрыть слой', 'layer.hidden': 'Скрыт: показать слой', 'layer.up': 'Поднять слой', 'layer.down': 'Опустить слой', 'layer.delete': 'Удалить слой', 'layer.confirm': 'Удалить с {n} дет.?',
     'layer.solo': 'Только активный слой', 'layer.showAll': 'Показать все слои',
     'sel.none': 'ничего', 'sel.many': 'деталей: {n}', 'sel.hint': 'Нажмите на деталь, чтобы править её. Зажмите на пустом месте и потяните, чтобы выделить область. Shift-клик добавляет к выделению.',
     'sel.layer': 'Слой', 'sel.dir': 'Направление', 'sel.onCarrier': 'Сидит на пальце водила {a}.',
@@ -105,6 +105,13 @@ const STR = {
     'sp.v': 'Линейная скорость', 'sp.force': 'Сила, если вся мощность идёт сюда', 'sp.n': 'Частота вращения n', 'sp.vPitch': 'Окружная скорость', 'sp.torque': 'Момент, если вся мощность идёт сюда',
   },
 };
+/* ---- text added in version 3 ---- */
+Object.assign(STR.en, {
+  'layer.name': 'name', 'layer.open': 'Lock layer', 'layer.locked': 'Locked: unlock layer',
+});
+Object.assign(STR.ru, {
+  'layer.name': 'имя', 'layer.open': 'Заблокировать слой', 'layer.locked': 'Заблокирован: разблокировать',
+});
 let lang = 'en';
 try { lang = localStorage.getItem('gear-bench-lang') || ((navigator.language || '').toLowerCase().startsWith('ru') ? 'ru' : 'en'); } catch (e) {}
 if (!STR[lang]) lang = 'en';

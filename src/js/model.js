@@ -45,11 +45,14 @@ const TYPES = {
 };
 const GROUPS = ['gears', 'flex', 'shafts', 'mech'];
 const DEFAULTS = { carrier: { n: 3 }, crank: { l: 40 }, ring: { loose: true }, clutch: { on: true }, brake: { on: true }, ratchet: { on: false } };
-const PROPS = ['z', 'zw', 'd', 'r', 'n', 'l', 'h', 'len', 'l0', 'l1', 'dir', 'on', 'loose', 'held'];
+const PROPS = ['z', 'zw', 'd', 'r', 'n', 'l', 'h', 'len', 'l0', 'l1', 'dir', 'on', 'loose', 'held', 'label'];
+const MOTOR_KEYS = ['kind', 'rpm', 'tq', 'P', 'n', 'ks', 'km'], LOAD_KEYS = ['kind', 'tq', 'n', 'eta', 'table'];
+const pickKeys = (o, keys) => { const r = {}; for (const k of keys) if (o[k] != null) r[k] = Array.isArray(o[k]) ? o[k].map(x => Array.isArray(x) ? x.slice() : x) : o[k]; return r; };
 
 /* ---------- scene state ---------- */
 let parts = [], links = [], nextId = 1;
 let layerCount = 3, activeLayer = 0, hiddenLayers = new Set();
+let lockedLayers = new Set(), layerNames = [], soloActive = false;   // soloActive: show the active layer alone
 let sel = new Set(), outId = null, linkDraft = null;
 let running = true, clock = 0, jit = 0;      // clock advances by RPM * seconds, so angle = phase + rpm * clock
 let lockMsg = '', hintMsg = '', collide = new Set(), meshes = [];
@@ -113,7 +116,8 @@ function make(o) {
   const p = { id: o.id, name: o.name, type: o.type, x: o.x, y: o.y, layer: o.layer || 0, free: o.free || 0, phase: o.free || 0, w: 0 };
   for (const k of PROPS) if (o[k] != null) p[k] = o[k];
   if (T(p).dir && p.dir == null) p.dir = 0;
-  if (o.motor) p.motor = { rpm: o.motor.rpm, tq: o.motor.tq || 2 };
+  if (o.motor) p.motor = { kind: 'speed', tq: 2, ...pickKeys(o.motor, MOTOR_KEYS) };
+  if (o.load) p.load = { kind: 'const', tq: 1, n: 1000, eta: 1, ...pickKeys(o.load, LOAD_KEYS) };
   if (o.mount) p.mount = { c: o.mount.c, k: o.mount.k };
   if (isShaft(p)) { p.l0 = o.l0 != null ? o.l0 : p.layer; p.l1 = o.l1 != null ? o.l1 : p.l0; p.layer = p.l0; }
   const sub = f => ({ free: f || 0, phase: f || 0, w: 0 });
@@ -190,7 +194,8 @@ function deleteLayer(l) {
     else if (p.layer > l) p.layer--;
   }
   layerCount--; activeLayer = Math.min(activeLayer, layerCount - 1);
-  hiddenLayers = new Set([...hiddenLayers].filter(h => h !== l).map(h => h > l ? h - 1 : h));
+  const drop = set => new Set([...set].filter(h => h !== l).map(h => h > l ? h - 1 : h));
+  hiddenLayers = drop(hiddenLayers); lockedLayers = drop(lockedLayers); layerNames.splice(l, 1);
 }
 function moveLayer(l, d) { // swap layer l with its neighbour
   const m = l + d; if (m < 0 || m >= layerCount) return;
@@ -199,20 +204,34 @@ function moveLayer(l, d) { // swap layer l with its neighbour
     if (isShaft(p)) { const a = sw(p.l0), b = sw(p.l1); p.l0 = Math.min(a, b); p.l1 = Math.max(a, b); p.layer = p.l0; }
     else p.layer = sw(p.layer);
   }
-  hiddenLayers = new Set([...hiddenLayers].map(sw));
+  hiddenLayers = new Set([...hiddenLayers].map(sw)); lockedLayers = new Set([...lockedLayers].map(sw));
+  const nm = layerNames[l]; layerNames[l] = layerNames[m]; layerNames[m] = nm;
   activeLayer = sw(activeLayer);
 }
-const layerShown = l => !hiddenLayers.has(l);
+const layerShown = l => soloActive ? l === activeLayer : !hiddenLayers.has(l);
+const layerLabel = l => layerNames[l] ? `${LET(l)} ${layerNames[l]}` : LET(l);
+/* Only the active layer takes clicks: parts on other layers are drawn faded and let the pointer through.
+   A shaft belongs to every layer it passes. A locked layer shows its parts but does not let them be picked or moved. */
+const onActive = p => isShaft(p) ? covers(p, activeLayer) : p.layer === activeLayer;
+const canPick = p => onActive(p) && layerShown(activeLayer) && !lockedLayers.has(activeLayer);
 const shown = p => isShaft(p) ? [...Array(p.l1 - p.l0 + 1)].some((_, i) => layerShown(p.l0 + i)) : layerShown(p.layer);
+
+// an empty bench with n layers
+function resetScene(n = 3) {
+  parts = []; links = []; nextId = 1; sel = new Set(); linkDraft = null; outId = null; clock = 0;
+  layerCount = n; activeLayer = 0; hiddenLayers = new Set(); lockedLayers = new Set(); layerNames = []; soloActive = false;
+}
 
 /* ---------- save and load ---------- */
 function serialize() {
-  return { v: 2, nextId, layerCount, outId, showDims, hidden: [...hiddenLayers],
+  return { v: SCENE_V, nextId, outId, showDims, solo: soloActive,
+    layers: [...Array(layerCount)].map((_, l) => ({ name: layerNames[l] || '', visible: !hiddenLayers.has(l), locked: lockedLayers.has(l) })),
     links: links.map(L => ({ id: L.id, kind: L.kind, ids: L.ids, crossed: L.crossed, free: linkPos(L) })),
     parts: parts.map(p => {
       const o = { id: p.id, name: p.name, type: p.type, x: p.x, y: p.y, layer: p.layer, free: angle(p) };
       for (const k of PROPS) if (p[k] != null) o[k] = p[k];
-      if (p.motor) o.motor = { ...p.motor };
+      if (p.motor) o.motor = pickKeys(p.motor, MOTOR_KEYS);
+      if (p.load) o.load = pickKeys(p.load, LOAD_KEYS);
       if (p.mount) o.mount = { ...p.mount };
       if (p.o) o.fo = angle(p.o);
       if (p.a) { o.fa = angle(p.a); o.fb = angle(p.b); }
@@ -220,11 +239,15 @@ function serialize() {
     }) };
 }
 function load(d) {
+  d = migrate(d); if (!d) throw new Error('unreadable scene');
+  const ls = d.layers || [];
   parts = d.parts.filter(o => TYPES[o.type]).map(make);
   links = (d.links || []).map(L => ({ id: L.id, kind: L.kind, ids: L.ids.slice(), crossed: !!L.crossed, free: L.free || 0, phase: L.free || 0, w: 0 }));
   nextId = d.nextId; outId = d.outId != null ? d.outId : null; showDims = !!d.showDims;
-  layerCount = Math.min(MAXL, Math.max(1, d.layerCount || 1, ...parts.map(p => (isShaft(p) ? p.l1 : p.layer) + 1)));
-  hiddenLayers = new Set(d.hidden || []); sel = new Set(); linkDraft = null; activeLayer = 0; clock = 0;
+  layerCount = Math.min(MAXL, Math.max(1, ls.length, ...parts.map(p => (isShaft(p) ? p.l1 : p.layer) + 1)));
+  const flag = k => new Set(ls.map((L, l) => L[k] ? l : -1).filter(l => l >= 0));
+  hiddenLayers = new Set(ls.map((L, l) => L.visible === false ? l : -1).filter(l => l >= 0)); lockedLayers = flag('locked');
+  layerNames = ls.map(L => L.name || ''); soloActive = !!d.solo; sel = new Set(); linkDraft = null; activeLayer = 0; clock = 0;
 }
 const STORE = 'gear-bench-5';
 function save() { try { localStorage.setItem(STORE, JSON.stringify(serialize())); } catch (e) {} }

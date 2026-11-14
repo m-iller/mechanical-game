@@ -109,3 +109,8 @@ dd{overflow-wrap:anywhere}
   .sheet{height:70svh;min-height:380px}
   .panel{overflow:visible}
 }
+
+/* version 3 */
+.layer label.name{display:flex;gap:6px;align-items:center;border:1px solid var(--select);padding:0 6px;min-width:0}
+.layer label.name b{font:600 13px var(--mono);color:var(--select);white-space:nowrap}
+.layer label.name input{flex:1;min-width:0;width:4em;border:0;background:transparent;color:var(--ink);font:13px var(--mono);padding:4px 0}

@@ -53,7 +53,7 @@ function insertTemplate(id, x, y) {
 
 // the scene a new bench opens on: one motor, a three-pulley belt, a planetary stage built from loose gears, a bevel and worm branch
 function example() {
-  parts = []; links = []; nextId = 1; sel = new Set(); linkDraft = null; clock = 0; layerCount = 4; activeLayer = 0; hiddenLayers = new Set(); showDims = false;
+  resetScene(4); showDims = false;
   const p1 = addPart('pulley', { x: 0, y: 0, layer: 0, d: 24, motor: { rpm: 240, tq: 2 } });
   const p2 = addPart('pulley', { x: 80, y: 0, layer: 0, d: 60 });
   const p3 = addPart('pulley', { x: 30, y: -62, layer: 0, d: 30 });

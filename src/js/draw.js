@@ -1,7 +1,10 @@
 /* Gear Bench — drawing: the top view, the side view above it, labels and dimensions. */
 'use strict';
 
-const cv = document.getElementById('cv'), ctx = cv.getContext('2d'), sheet = document.getElementById('sheet');
+const cv = document.getElementById('cv'), mainCtx = cv.getContext('2d'), sheet = document.getElementById('sheet');
+let ctx = mainCtx;                     // the drawing functions below paint into whichever context this names
+const ghost = document.createElement('canvas'), ghostCtx = ghost.getContext('2d');
+const FADE = 0.3;                       // opacity of the layers that are not active
 let W = 300, H = 300, C = {}, boxSel = null;
 
 function readTokens() {
@@ -232,20 +235,31 @@ function drawTop(dpr, s, bh) {
       ctx.beginPath(); ctx.arc(g.x, g.y, RO(g), 0, TAU); if (g.type === 'ring') { ctx.moveTo(g.x + RI(g), g.y); ctx.arc(g.x, g.y, RI(g), 0, TAU); } ctx.stroke(); ctx.setLineDash([]); ctx.globalAlpha = 1;
     }
   };
-  for (let l = 0; l < layerCount; l++) {
-    if (!layerShown(l)) continue;
+  const layerParts = l => {
     for (const g of parts) if (g.layer === l && !isShaft(g)) part(g);
     for (const L of links) { const w = byId(L.ids[0]); if (w && w.layer === l) drawLinkTop(L); }
-  }
+  };
+  // layers other than the active one are painted on a second canvas and laid over as one faded sheet
+  const faded = ls => {
+    ls = ls.filter(layerShown); if (!ls.length) return;
+    if (ghost.width !== cv.width || ghost.height !== cv.height) { ghost.width = cv.width; ghost.height = cv.height; }
+    const tf = mainCtx.getTransform(); ghostCtx.setTransform(1, 0, 0, 1, 0, 0); ghostCtx.clearRect(0, 0, ghost.width, ghost.height); ghostCtx.setTransform(tf);
+    ctx = ghostCtx; try { ls.forEach(layerParts); } finally { ctx = mainCtx; }
+    ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.globalAlpha = FADE; ctx.drawImage(ghost, 0, 0); ctx.restore();
+  };
+  const all = [...Array(layerCount).keys()];
+  faded(all.filter(l => l < activeLayer)); if (layerShown(activeLayer)) layerParts(activeLayer); faded(all.filter(l => l > activeLayer));
   // shafts and carrier pins poke through everything above them
   for (const g of parts) {
     if (!shown(g)) continue;
+    ctx.globalAlpha = onActive(g) ? 1 : FADE;
     if (g.type === 'carrier') for (let k = 0; k < g.n; k++) { const q = pinPos(g, k); dot(q.x, q.y, 2.6, C.shaft); dot(q.x, q.y, 1.1, C.paper); }
     if (isShaft(g)) {
       const an = angle(g); dot(g.x, g.y, 3, g.motor ? C.brass : collide.has(g.id) ? C.jam : C.shaft);
       ctx.strokeStyle = C.paper; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(g.x, g.y); ctx.lineTo(g.x + 3 * Math.cos(an), g.y + 3 * Math.sin(an)); ctx.stroke();
     }
   }
+  ctx.globalAlpha = 1;
   if (showDims) { // centre distances of every mesh
     ctx.save(); ctx.strokeStyle = C.select; ctx.fillStyle = C.select; ctx.lineWidth = 1 / s;
     for (const m of meshes) if (shown(m.a) && shown(m.b) && isVert(m.a)) { ctx.beginPath(); ctx.moveTo(m.a.x, m.a.y); ctx.lineTo(m.b.x, m.b.y); ctx.stroke(); dot(m.a.x, m.a.y, 1.2, C.select); dot(m.b.x, m.b.y, 1.2, C.select); }
@@ -267,8 +281,10 @@ function drawTop(dpr, s, bh) {
     const b = boxOf(g), off = (b ? b[1] : tipR(g)) * s + 13, n = b ? [-Math.sin(g.dir), Math.cos(g.dir)] : [0, 1];
     const up = b ? -1 : g.layer ? -1 : 1, sx = X(g.x) + n[0] * up * off, sy = Y(g.y) + n[1] * up * off + (b || !g.layer ? 0 : 8 - (g.layer - 1) * 14);
     const str = [g.name, sizeText(g), showDims && diaText(g), speedText(g, true), g === out ? 'OUT' : g.motor ? 'M' : ''].filter(Boolean).join('  ');
+    ctx.globalAlpha = onActive(g) ? 1 : 0.45;
     text(str, sx, sy, collide.has(g.id) ? C.jam : g.motor ? C.brass : g === out ? C.select : C.ink);
   }
+  ctx.globalAlpha = 1;
   if (showDims) for (const m of meshes) if (shown(m.a) && shown(m.b) && isVert(m.a)) text(`a ${dist(m.a, m.b).toFixed(dist(m.a, m.b) % 1 ? 1 : 0)}`, X((m.a.x + m.b.x) / 2), Y((m.a.y + m.b.y) / 2), C.select);
   if (boxSel) { ctx.strokeStyle = C.select; ctx.lineWidth = 1; ctx.setLineDash([5, 3]); ctx.strokeRect(boxSel.x0, boxSel.y0, boxSel.x1 - boxSel.x0, boxSel.y1 - boxSel.y0); ctx.setLineDash([]); ctx.globalAlpha = 0.08; ctx.fillStyle = C.select; ctx.fillRect(boxSel.x0, boxSel.y0, boxSel.x1 - boxSel.x0, boxSel.y1 - boxSel.y0); ctx.globalAlpha = 1; }
   ctx.restore();
@@ -300,14 +316,15 @@ function drawSide(dpr, s, bh) {
     for (let k = -FW; k < w + FW; k += 2) { ctx.moveTo(xa + k, -z0); ctx.lineTo(xa + k + FW, -z1); } ctx.stroke(); ctx.restore();
     ctx.strokeStyle = ink; ctx.lineWidth = 1.2 / s; ctx.strokeRect(xa, -z1, w, z1 - z0);
   };
-  const dim = l => { ctx.globalAlpha = layerShown(l) ? 1 : 0.22; };
+  const dim = l => { ctx.globalAlpha = !layerShown(l) ? 0.18 : l === activeLayer ? 1 : 0.5; };
+  ctx.fillStyle = C.select; ctx.globalAlpha = 0.08; ctx.fillRect(x0, -(activeLayer * LP + FW + 4), x1 - x0, FW + 8); ctx.globalAlpha = 1;   // the active layer's band
   const order = [...parts].sort((p, q) => p.y - q.y || p.layer - q.layer);
   // shafts first: each runs through the layers it spans, in a bearing at both ends
   const bearing = (x, z) => { ctx.fillStyle = C.panel; ctx.strokeStyle = C.ink; ctx.lineWidth = 1 / s; for (const sd of [-1, 1]) { ctx.fillRect(x + sd * 4.6 - 1.8, -z - 1.6, 3.6, 3.2); ctx.strokeRect(x + sd * 4.6 - 1.8, -z - 1.6, 3.6, 3.2); } };
   const covered = p => parts.some(q => isShaft(q) && same(q, p) && covers(q, p.layer));
   for (const g of order) {
     if (isShaft(g)) {
-      ctx.globalAlpha = shown(g) ? 1 : 0.22;
+      ctx.globalAlpha = !shown(g) ? 0.18 : onActive(g) ? 1 : 0.5;
       const z0 = g.l0 * LP - 3.5, z1 = g.l1 * LP + FW + 3.5, col = g.motor ? C.brass : collide.has(g.id) ? C.jam : g.w ? C.shaft : C.muted;
       ctx.fillStyle = col; ctx.fillRect(g.x - 2.4, -z1, 4.8, z1 - z0);
       const an = angle(g); ctx.strokeStyle = C.paper; ctx.lineWidth = 0.8; ctx.beginPath(); // a keyway line that sweeps across as the shaft turns
@@ -399,7 +416,7 @@ function drawSide(dpr, s, bh) {
   ctx.globalAlpha = 1;
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   ctx.font = `500 12px ${C.mono}`; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
-  for (let l = 0; l < layerCount; l++) { const y = by - (l * LP + FW / 2) * s; ctx.strokeStyle = C.paper; ctx.lineWidth = 4; ctx.strokeText(LET(l), 10, y); ctx.fillStyle = l === activeLayer ? C.ink : C.muted; ctx.fillText(LET(l), 10, y); }
+  for (let l = 0; l < layerCount; l++) { const y = by - (l * LP + FW / 2) * s; ctx.strokeStyle = C.paper; ctx.lineWidth = 4; const lb = layerLabel(l) + (lockedLayers.has(l) ? ' ⊘' : ''); ctx.strokeText(lb, 10, y); ctx.fillStyle = l === activeLayer ? C.select : C.muted; ctx.fillText(lb, 10, y); }
   ctx.restore();
 }
 

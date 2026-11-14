@@ -129,16 +129,22 @@ function renderLayers() {
   const box = $('layers'); box.textContent = '';
   for (let l = layerCount - 1; l >= 0; l--) {
     const n = parts.filter(p => !isShaft(p) && p.layer === l).length, row = el('div', null, { className: 'layer' + (l === activeLayer ? ' on' : '') });
-    const name = btn(`${LET(l)} · ${n}`, () => { activeLayer = l; ui(); }, l === activeLayer); name.className = 'name';
-    const eye = btn(layerShown(l) ? t('layer.shown') : t('layer.hidden'), () => { if (layerShown(l)) hiddenLayers.add(l); else hiddenLayers.delete(l); ui(); save(); }, layerShown(l));
+    let name;
+    if (l === activeLayer) { // the active layer's row carries its name field
+      name = el('label', null, { className: 'name on' }); const inp = el('input', null, { type: 'text', value: layerNames[l] || '', placeholder: t('layer.name'), maxLength: 24 });
+      inp.onchange = () => { layerNames[l] = inp.value.trim(); save(); }; name.append(el('b', `${LET(l)} · ${n}`), inp);
+    } else { name = btn(`${layerLabel(l)} · ${n}`, () => setActive(l), false); name.className = 'name'; }
+    const lk = btn(lockedLayers.has(l) ? '⊘' : '◌', () => { if (lockedLayers.has(l)) lockedLayers.delete(l); else lockedLayers.add(l); pick([...sel]); save(); }, lockedLayers.has(l));
+    lk.title = lockedLayers.has(l) ? t('layer.locked') : t('layer.open'); lk.setAttribute('aria-label', lk.title);
+    const eye = btn(layerShown(l) ? '◉' : '○', () => { if (hiddenLayers.has(l)) hiddenLayers.delete(l); else hiddenLayers.add(l); ui(); save(); }, layerShown(l)); eye.disabled = soloActive; eye.title = layerShown(l) ? t('layer.shown') : t('layer.hidden'); eye.setAttribute('aria-label', eye.title);
     const upB = btn('↑', () => { moveLayer(l, 1); commit(); }), dn = btn('↓', () => { moveLayer(l, -1); commit(); });
     upB.disabled = l === layerCount - 1; dn.disabled = l === 0; upB.setAttribute('aria-label', t('layer.up')); dn.setAttribute('aria-label', t('layer.down'));
     const del = btn(armedLayer === l ? t('layer.confirm', { n }) : '×', () => { if (n && armedLayer !== l) { armedLayer = l; ui(); return; } armedLayer = null; deleteLayer(l); commit(); });
     del.disabled = layerCount <= 1; del.className = armedLayer === l ? 'danger' : ''; del.setAttribute('aria-label', t('layer.delete'));
-    row.append(name, eye, upB, dn, del); box.append(row);
+    row.append(name, eye, lk, upB, dn, del); box.append(row);
   }
   $('add-layer').disabled = layerCount >= MAXL;
-  $('solo').textContent = hiddenLayers.size ? t('layer.showAll') : t('layer.solo');
+  $('solo').textContent = t('layer.solo'); press($('solo'), soloActive);
 }
 function renderSel() {
   const ps = selParts(), p = ps.length === 1 ? ps[0] : null, body = $('sel-body');
@@ -199,6 +205,7 @@ function ui() {
   const nt = TYPES[$('new-type').value], nz = $('new-z'); $('new-size-row').hidden = !nt.key;
   if (nt.key) { nz.min = nt.lim[0]; nz.max = nt.lim[1]; nz.step = nt.lim[2]; const nn = $('new-z-num'); nn.min = nz.min; nn.max = nz.max; nn.step = nz.step; if (document.activeElement !== nn) nn.value = nz.value; $('new-z-lab').textContent = t('size.' + $('new-type').value); }
   $('new-layer').textContent = t('add.onLayer', { l: LET(activeLayer) });
+  $('add').disabled = $('tpl-add').disabled = lockedLayers.has(activeLayer);
   for (const m of ['both', 'top', 'side']) press($('vm-' + m), viewMode === m);
   press($('dims'), showDims);
   const tr = $('train'), out = outPart(); tr.textContent = '';
@@ -224,9 +231,12 @@ function applyLang() {
 function pick(ids, toggle) {
   if (toggle) for (const id of ids) { if (sel.has(id)) sel.delete(id); else sel.add(id); }
   else sel = new Set(ids);
-  const p = one(); if (p) activeLayer = p.layer;
+  for (const q of selParts()) if (!isShaft(q) && lockedLayers.has(q.layer)) sel.delete(q.id);   // a locked layer gives nothing up
+  const p = one(); if (p && !onActive(p)) activeLayer = p.layer;
   ui();
 }
+// make a layer the active one; parts picked on other layers are let go
+function setActive(l) { activeLayer = l; sel = new Set(selParts().filter(onActive).map(p => p.id)); armedLayer = null; ui(); save(); }
 function setLayer(p, l) { if (isShaft(p)) { const n = p.l1 - p.l0; p.l0 = Math.min(l, layerCount - 1 - n); p.l1 = p.l0 + n; p.layer = p.l0; } else { p.layer = l; delete p.mount; autoShaft(p); } activeLayer = l; }
 function removeSel() { removeParts([...sel]); commit(); }
 function duplicateSel() {
@@ -333,16 +343,19 @@ function hit(p) {
   if (p.y < bandH()) { // side view: shafts are thin, so they win where they show between parts
     const x = (p.x - W / 2) / view.scale + view.cx, z = (baseY() - p.y) / view.scale;
     const inL = g => { const zb = g.layer * LP; return z > zb - 1 && z < zb + FW + 1; };
-    return [...parts].sort((a, b) => b.y - a.y).find(g => !isShaft(g) && Math.abs(x - g.x) < halfW(g) && inL(g))
-      || parts.find(g => isShaft(g) && Math.abs(x - g.x) < 4 && z > g.l0 * LP - 4 && z < g.l1 * LP + FW + 4);
+    const pool = parts.filter(canPick);
+    return [...pool].sort((a, b) => b.y - a.y).find(g => !isShaft(g) && Math.abs(x - g.x) < halfW(g) && inL(g))
+      || pool.find(g => isShaft(g) && Math.abs(x - g.x) < 4 && z > g.l0 * LP - 4 && z < g.l1 * LP + FW + 4);
   }
-  const w = toWorld(p.x, p.y), vis = parts.filter(shown);
+  const w = toWorld(p.x, p.y), vis = parts.filter(canPick);   // only the active layer takes the pointer
   return vis.find(g => isShaft(g) && Math.hypot(w.x - g.x, w.y - g.y) < 3.2) || vis.filter(g => !isShaft(g)).sort((a, b) => b.layer - a.layer).find(g => hitTop(g, w));
 }
 cv.addEventListener('pointerdown', e => {
   cv.setPointerCapture(e.pointerId); const p = pos(e); pts.set(e.pointerId, p); clearTimeout(holdTimer);
   if (pts.size === 2) { drag = pan = boxSel = null; const [a, b] = [...pts.values()]; pinch = { d: Math.hypot(a.x - b.x, a.y - b.y) || 1, scale: view.scale, w: toWorld((a.x + b.x) / 2, (a.y + b.y) / 2), side: (a.y + b.y) / 2 < bandH() }; return; }
-  const side = p.y < bandH(), g = hit(p);
+  const side = p.y < bandH();
+  if (side && p.x < 46) { const l = Math.floor((baseY() - p.y) / view.scale / LP + 0.2); if (l >= 0 && l < layerCount) { setActive(l); return; } }   // a layer's letter in the side view makes it active
+  const g = hit(p);
   if (linkDraft) { // building a belt or chain: clicks add and remove wheels
     if (g && g.type === (linkDraft.kind === 'belt' ? 'pulley' : 'sprocket') && g.layer === byId(linkDraft.ids[0]).layer) { const i = linkDraft.ids.indexOf(g.id); if (i < 0) linkDraft.ids.push(g.id); else if (linkDraft.ids.length > 1) linkDraft.ids.splice(i, 1); ui(); }
     return;
@@ -352,6 +365,7 @@ cv.addEventListener('pointerdown', e => {
     if (!sel.has(g.id)) pick([g.id]);
     const w = toWorld(p.x, p.y), group = new Set(selParts());
     for (const q of [...group]) if (isShaft(q)) for (const c of onShaft(q)) group.add(c);   // a shaft takes what is keyed to it along
+    if ([...group].some(q => !isShaft(q) && lockedLayers.has(q.layer))) return;              // unless a locked layer holds one of them
     drag = { g, dx: w.x - g.x, dy: w.y - g.y, others: [...group].filter(q => q !== g && !q.mount).map(q => ({ q, ox: q.x - g.x, oy: q.y - g.y })), sx: p.x, sy: p.y, moved: false };
     cv.classList.add('dragging');
   } else {
@@ -386,7 +400,7 @@ const up = e => {
   pts.delete(e.pointerId); clearTimeout(holdTimer);
   if (boxSel) {
     const a = toWorld(Math.min(boxSel.x0, boxSel.x1), Math.min(boxSel.y0, boxSel.y1)), b = toWorld(Math.max(boxSel.x0, boxSel.x1), Math.max(boxSel.y0, boxSel.y1));
-    const inside = parts.filter(g => shown(g) && g.x >= a.x && g.x <= b.x && g.y >= a.y && g.y <= b.y).map(g => g.id);
+    const inside = parts.filter(g => canPick(g) && g.x >= a.x && g.x <= b.x && g.y >= a.y && g.y <= b.y).map(g => g.id);
     boxSel = null; cv.classList.remove('boxing'); pick(inside, e.shiftKey);
   } else if (pan && !pan.moved && !pan.onPart && sel.size) pick([]);
   if (drag && drag.moved) { const g = drag.g; if (drag.mount) g.mount = drag.mount; else if (!drag.others.length) autoShaft(g); commit(); }
@@ -411,10 +425,10 @@ $('add').onclick = () => {
 };
 $('tpl-add').onclick = () => { const c = toWorld(W / 2, topMid()); freeze(); const made = insertTemplate($('tpl').value, c.x, c.y); sel = new Set(made.map(p => p.id)); commit(); fit(); };
 $('add-layer').onclick = () => { addLayer(); ui(); save(); };
-$('solo').onclick = () => { if (hiddenLayers.size) hiddenLayers.clear(); else for (let l = 0; l < layerCount; l++) if (l !== activeLayer) hiddenLayers.add(l); ui(); save(); };
+$('solo').onclick = () => { soloActive = !soloActive; ui(); save(); };
 $('dims').onclick = () => { showDims = !showDims; ui(); save(); };
 $('example').onclick = () => { example(); solve(); fit(); ui(); save(); };
-$('clear').onclick = () => { parts = []; links = []; sel = new Set(); outId = null; commit(); };
+$('clear').onclick = () => { const n = layerCount; resetScene(n); commit(); };
 $('fit').onclick = fit;
 $('zoom-in').onclick = () => zoomAt(W / 2, topMid(), 1.3);
 $('zoom-out').onclick = () => zoomAt(W / 2, topMid(), 1 / 1.3);
@@ -427,7 +441,7 @@ addEventListener('keydown', e => {
   else if (e.key === ' ') { e.preventDefault(); running = !running; ui(); }
   else if ((e.key === 'Delete' || e.key === 'Backspace') && sel.size) { e.preventDefault(); removeSel(); }
   else if (e.key.toLowerCase() === 'r' || e.key.toLowerCase() === 'к') rotateSel(e.shiftKey ? -15 : 15);
-  else if ((e.ctrlKey || e.metaKey) && (e.key.toLowerCase() === 'a' || e.key.toLowerCase() === 'ф')) { e.preventDefault(); pick(parts.filter(shown).map(p => p.id)); }
+  else if ((e.ctrlKey || e.metaKey) && (e.key.toLowerCase() === 'a' || e.key.toLowerCase() === 'ф')) { e.preventDefault(); pick(parts.filter(canPick).map(p => p.id)); }
   else if ((e.ctrlKey || e.metaKey) && (e.key.toLowerCase() === 'd' || e.key.toLowerCase() === 'в')) { e.preventDefault(); duplicateSel(); }
 });
 

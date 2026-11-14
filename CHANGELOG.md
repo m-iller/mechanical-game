@@ -21,6 +21,8 @@ Gear Bench is growing from a drive sandbox into a rough-figures tool for mechani
 - **Forces**: a resisting force on a slider over part of its stroke, link masses, the moment the crank needs over the turn (kinetostatics), and its mean as a load on the drive.
 - **Flywheel**: excess work, speed fluctuation δ for the flywheels on the crank shaft, and the inertia needed for δ = 1/20. Template "Crank press with flywheel".
 - **Cams**: a cam and a roller follower as links with a higher pair. Motion laws (cycloidal, harmonic, constant acceleration, constant speed), surface profile, pressure angle, base radius for α ≤ 30°, curvature check, follower graphs. Template "Cam drive of a valve".
+- **Structure of mechanisms**: redundant constraints by Malyshev's formula and the split into Assur groups.
+- **Planetary tooth numbers**: coaxial, neighbour and assembly conditions for the stage around a carrier, the profile shift needed below 17 teeth, and a picker that offers tooth numbers for a wanted ratio.
 
 ### Changed
 - Scenes are saved in format v3. Scenes from 2.x open and are migrated on load.

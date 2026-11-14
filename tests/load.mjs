@@ -3,7 +3,7 @@
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 
-export const CORE = ['core/units.js', 'core/explain.js', 'core/warn.js', 'core/ports.js', 'core/migrate.js', 'core/loads.js', 'core/nonlin.js'];
+export const CORE = ['core/units.js', 'core/explain.js', 'core/warn.js', 'core/ports.js', 'core/migrate.js', 'core/loads.js', 'core/nonlin.js', 'core/planet.js'];
 export const TMM = [...CORE, 'domains/tmm/linkage.js', 'domains/tmm/cam.js'];
 export const DRIVES = ['strings.js', ...CORE, 'domains/tmm/linkage.js', 'domains/tmm/cam.js', 'model.js', 'paths.js', 'solver.js', 'power.js', 'domains/tmm/scene.js', 'domains/tmm/cycle.js', 'domains/tmm/panel.js', 'templates.js'];
 

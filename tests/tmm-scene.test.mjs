@@ -137,3 +137,16 @@ test('demo: crank press — motor, belt, flywheel, crank, rod, ram; the mean mom
   assert.ok(r.src.ratio > 0.4 && r.src.ratio < 1);
   close(r.J, 0.6, 1e-12); assert.ok(r.delta > 0.01 && r.delta < 0.1); assert.ok(r.peak > 5 * r.mean);
 });
+
+test('Assur groups: the slider-crank and the four-bar are a driven link plus one dyad; a six-bar is two dyads', () => {
+  const r = bench().run(() => {
+    resetScene(1); insertTemplate('slidercrank', 0, 0); solve(); const a = tmmAssur(tmmInfo.groups[0]);
+    resetScene(1); const [c, cp, pv, rk] = insertTemplate('fourbar', 0, 0);
+    // hang a second dyad on the rocker's end: a rod to a slider on a guide
+    const e = jointPos(rk, 1), g = addPart('guide', { x: e.x + 60, y: e.y, len: 120, dir: 0 }), sl = addPart('tslider', { x: e.x + 55, y: e.y, dir: 0 }), rod = addPart('trod', { x: e.x, y: e.y, len: 55, dir: 0 });
+    tmmAttach([rod.id, sl.id]); solve(); const g6 = tmmInfo.groups[0], b = tmmAssur(g6);
+    return { a: a.groups.map(x => [x.cls, x.ids.length]), left: a.left, b: b.groups.map(x => [x.cls, x.ids.length]), W: g6.W, n: g6.n, ok: tmmInfo.ok };
+  });
+  assert.deepEqual(r.a, [['II', 2]]); assert.deepEqual(r.left, []);
+  assert.deepEqual(r.b, [['II', 2], ['II', 2]]); assert.deepEqual([r.W, r.n, r.ok], [1, 5, true]);
+});

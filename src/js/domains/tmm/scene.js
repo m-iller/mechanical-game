@@ -70,6 +70,21 @@ function tmmAnalyze() {
   for (const g of out) { g.n -= g.pf; g.W = 3 * g.n - 2 * g.p5 - g.p4; }
   tmmInfo = { ok: tmmStepOk(), groups: out, of };
 }
+/* Assur groups of one mechanism: with the frame and the driven links known, peel off the smallest sets of links
+   whose freedoms are exactly used up by their pairs (3·n − 2·p5 = 0). Two links with three pairs is a class II group (a dyad),
+   four links with six pairs class III. Returns { groups: [{ ids, cls }], left: [ids] } — left is what no group takes. */
+function tmmAssur(g) {
+  const known = new Set(parts.filter(p => isLink(p) && linkFixed(p)).map(p => p.id)), rest = g.ids.filter(id => !known.has(id)), groups = [];
+  const dof = S => { const In = id => S.has(id), ok = id => S.has(id) || known.has(id); let d = 3 * S.size; for (const q of pairs) if ((In(q.a) && ok(q.b)) || (In(q.b) && ok(q.a))) d -= q.type === 'F' ? 3 : q.type === 'H' ? 1 : 2; return d; };
+  const combos = (arr, k, start = 0, cur = []) => k === 0 ? [cur] : arr.slice(start).flatMap((x, i) => combos(arr, k - 1, start + i + 1, [...cur, x]));
+  for (let found = true; found && rest.length;) {
+    found = false;
+    for (let k = 1; k <= Math.min(4, rest.length) && !found; k++) for (const c of combos(rest, k)) if (dof(new Set(c)) === 0) {
+      groups.push({ ids: c, cls: k === 2 ? 'II' : k === 4 ? 'III' : k === 1 ? 'II' : 'III' }); c.forEach(id => { known.add(id); rest.splice(rest.indexOf(id), 1); }); found = true; break;
+    }
+  }
+  return { groups, left: rest };
+}
 // do the links, as they stand, satisfy their pairs?
 function tmmStepOk() { const mech = tmmMech(); if (!mech.pairs.length) return true; return Math.max(...linkage(mech).eqs(mech.q0).map(Math.abs), 0) < 1e-3; }
 

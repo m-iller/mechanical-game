@@ -106,3 +106,22 @@ test('table load: linear interpolation between points, held flat outside them', 
   const r = core().run(() => { const M = loadOf({ kind: 'table', table: [[0, 10], [1000, 20], [2000, 60]] }); return [M(0), M(toSI(500, 'rpm')), M(toSI(1500, 'rpm')), M(toSI(5000, 'rpm'))]; });
   close(r[0], 10); close(r[1], 15); close(r[2], 40); close(r[3], 60);
 });
+
+/* ---- planetary tooth numbers ---- */
+test('planetary conditions: coaxial, neighbour, assembly (worked example z = 18 / 27 / 72, three planets, i = 5)', () => {
+  // 72 = 18 + 2·27; (18 + 27)·sin 60° = 38.97 > 29; (18 + 72)/3 = 30
+  const r = core().run(() => [planetCheck(18, 27, 72, 3), planetCheck(18, 27, 72, 4), planetCheck(18, 27, 72, 5), planetCheck(13, 15, 43, 3), planetCheck(18, 26, 72, 3)]);
+  assert.deepEqual(r[0], { coax: true, neighbour: true, assembly: true, undercut: true, i: 5 });
+  assert.equal(r[1].assembly, false);                       // 90/4 is not whole
+  assert.equal(r[2].neighbour, false);                      // 45·sin 36° = 26.45 < 29: five planets do not fit
+  assert.deepEqual([r[3].assembly, r[3].undercut], [false, false]);
+  assert.equal(r[4].coax, false);
+});
+
+test('planetary pick: every option meets the conditions and the best one hits the ratio', () => {
+  const r = core().run(() => planetPick(5, 3).map(o => ({ ...o, c: planetCheck(o.zs, o.zp, o.zr, 3) })));
+  assert.ok(r.length > 0);
+  for (const o of r) { assert.ok(o.c.coax && o.c.neighbour && o.c.assembly && o.c.undercut); }
+  close(r[0].i, 5, 1e-12); assert.deepEqual([r[0].zs, r[0].zp, r[0].zr], [18, 27, 72]);
+  close(core().run(() => shiftMin(12)), 5 / 17);
+});

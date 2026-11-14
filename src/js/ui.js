@@ -41,8 +41,36 @@ const linksOf = p => links.filter(L => L.ids.includes(p.id));
 // structure of the mechanism a link belongs to
 function linkRows(p) {
   const g = tmmInfo.of.get(p.id); if (!g || !(g.p5 + g.pf)) return [];
+  const A = tmmAssur(g), drv = g.ids.map(byId).filter(q => q && (isDriver(q) || (q.type === 'tfollow' && camOf(q)))), q6 = g.W - 6 * g.n + 5 * g.p5 + 4 * g.p4;
+  const chain = [`I(${drv.map(q => q.name).join(', ')})`, ...A.groups.map(x => `${x.cls}(${nameOf(x.ids)})`), ...(A.left.length ? [`?(${nameOf(A.left)})`] : [])].join(' → ');
   return [[t('io.links'), `${g.n}`], [t('io.p5'), `${g.p5}`],
-    [t('io.W'), `${g.W}`, ex('W', g.W, '', 'W = 3·n − 2·p₅ − p₄', [['n', g.n, ''], ['p₅', g.p5, ''], ['p₄', 0, '']], ['ex.cheb'])]];
+    [t('io.W'), `${g.W}`, ex('W', g.W, '', 'W = 3·n − 2·p₅ − p₄', [['n', g.n, ''], ['p₅', g.p5, ''], ['p₄', g.p4, '']], ['ex.cheb'])],
+    [t('io.q'), `${q6}`, ex('q', q6, '', 'q = W − 6·n + 5·p₅ + 4·p₄', [['W', g.W, ''], ['n', g.n, ''], ['p₅', g.p5, ''], ['p₄', g.p4, '']], ['ex.malyshev'])],
+    [t('io.assur'), chain, ex('n', A.groups.length, '', '3·n − 2·p₅ = 0', [], ['ex.assur'])]];
+}
+// the planetary stage around a carrier: its sun, planets and ring, and the conditions on their tooth numbers
+const stageOf = c => { const pl = parts.filter(q => q.mount && q.mount.c === c.id && q.type === 'spur'), L = pl.length ? pl[0].layer : -1; return { pl, sun: parts.find(q => q.type === 'spur' && !q.mount && same(q, c) && q.layer === L), ring: parts.find(q => q.type === 'ring' && same(q, c) && q.layer === L) }; };
+function planetRows(c) {
+  const { pl, sun, ring } = stageOf(c); if (!pl.length || !sun || !ring) return [];
+  const k = planetCheck(sun.z, pl[0].z, ring.z, c.n), yes = v => v ? t('pl.ok') : t('pl.no'), zv = [['z_s', sun.z, ''], ['z_p', pl[0].z, ''], ['z_r', ring.z, ''], ['n', c.n, '']];
+  const rows = [[t('pl.i'), fmtNum(k.i, 4), ex('i', k.i, '', 'i = 1 + z_r / z_s', zv, ['ex.plRing'])],
+    [t('pl.coax'), yes(k.coax), ex('z_r', ring.z, '', 'z_r = z_s + 2·z_p', zv, ['ex.plCoax'])],
+    [t('pl.neigh'), yes(k.neighbour), ex('(z_s + z_p)·sin(π/n)', (sun.z + pl[0].z) * Math.sin(Math.PI / c.n), '', '(z_s + z_p)·sin(π/n) > z_p + 2', zv, ['ex.plNeigh'])],
+    [t('pl.asm'), yes(k.assembly), ex('(z_s + z_r)/n', (sun.z + ring.z) / c.n, '', '(z_s + z_r) / n = whole', zv, ['ex.plAsm'])]];
+  const small = Math.min(sun.z, pl[0].z); if (small < Z_MIN) rows.push([t('pl.shift'), `x ≥ ${fmtNum(shiftMin(small), 2)}`, ex('x', shiftMin(small), '', 'x_min = (17 − z) / 17', [['z', small, '']], ['ex.plShift'])]);
+  return rows;
+}
+// pick tooth numbers for a wanted ratio and put them on the stage
+let pickRatio = null;
+function planetFields(c) {
+  const { pl, sun, ring } = stageOf(c); if (!pl.length || !sun || !ring) return [];
+  const box = el('div', null, { className: 'links' }), fill = () => {
+    box.textContent = '';
+    for (const o of planetPick(pickRatio || 1 + ring.z / sun.z, c.n)) { const r = el('div'); r.append(el('span', `${o.zs} / ${o.zp} / ${o.zr}  i = ${fmtNum(o.i, 4)}`), btn(t('pl.use'), () => { sun.z = o.zs; ring.z = o.zr; for (const q of pl) q.z = o.zp; c.r = M * (o.zs + o.zp) / 2; pickRatio = null; commit(); })); box.append(r); }
+    if (!box.children.length) box.append(el('span', t('pl.none')));
+  };
+  fill();
+  return [slider(t('pl.want'), 2.5, 12, 0.05, () => +(pickRatio || 1 + ring.z / sun.z).toFixed(2), v => { pickRatio = v; fill(); }), labelled(t('pl.options'), box)];
 }
 function specRows(p) {
   if (isLink(p)) return [...linkRows(p), ...(isDriver(p) ? [[t('sp.n'), rpmText(p.w)]] : []), ...tmmCycleRows(p)];
@@ -81,7 +109,8 @@ function specRows(p) {
     r.push([t(L.kind === 'belt' ? 'sp.belt' : 'sp.chain'), on ? `${n}, ${t('sp.wrap')} ${(on.wrap * 180 / Math.PI).toFixed(0)}°` : t('sp.notWrapped')]);
   }
   if (p.type === 'rack') { add('sp.v', o.w ? `${fmt(Math.abs(o.w * RPM))} ${t('u.mms')}` : t('s.idle')); add('sp.force', tqText(p, o)); }
-  else { add('sp.n', p.und && !p.w ? t('s.free') : rpmText(o.w)); if (d && o.w) add('sp.vPitch', `${fmt(Math.PI * d * Math.abs(o.w) / 60)} ${t('u.mms')}`); add('sp.torque', tqText(p, o)); }
+  if (p.type === 'carrier') r.push(...planetRows(p));
+  if (p.type === 'rack') {} else { add('sp.n', p.und && !p.w ? t('s.free') : rpmText(o.w)); if (d && o.w) add('sp.vPitch', `${fmt(Math.PI * d * Math.abs(o.w) / 60)} ${t('u.mms')}`); add('sp.torque', tqText(p, o)); }
   return r;
 }
 function ioRows() {
@@ -301,6 +330,7 @@ function renderSel() {
         body.append(mine.length ? labelled(t('sel.pairs'), box) : el('p', t('sel.noPairs'), { className: 'hint' }), ...tmmFields(p));
         const gc = el('canvas', null, { className: 'graphs' }); body.append(gc); graphTick = () => { if (gc.isConnected) drawGraphs(gc, p); }; selRefresh.push(graphTick);
       }
+      if (p.type === 'carrier') body.append(...planetFields(p));
       if (p.type === 'flywheel') body.append(slider(t('link.J'), 0, 10000, 0.0001, () => +flyJ(p).toPrecision(4), v => { p.J = v; commit(); }, unitSym('kgm2')));
       if (p.load) body.append(...loadFields(p));
       const dl = el('dl'); dl.dataset.why = p.id + ':'; body.append(dl); selRefresh.push(() => fillDl(dl, [...(p.load ? loadRows(p) : []), ...specRows(p)]));

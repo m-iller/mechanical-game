@@ -107,9 +107,17 @@ const STR = {
 };
 /* ---- text added in version 3 ---- */
 Object.assign(STR.en, {
+  'grp.io': 'Sources and consumers', 'type.emotor': 'electric motor', 'type.machine': 'machine (black box)', 'size.emotor': 'Size ⌀', 'size.machine': 'Size',
+  'w.stall': '{a} stalls: the load is above everything the motor can give.', 'w.overload': '{a} is overloaded: {k} × nominal torque.',
+  'w.nostart': '{a} runs here, but cannot start under this load on its own.', 'w.idleLoad': '{a} is not driven.',
+  'w.undercut': '{a}: fewer than {z} teeth, a standard tooth would be undercut.',
   'layer.name': 'name', 'layer.open': 'Lock layer', 'layer.locked': 'Locked: unlock layer',
 });
 Object.assign(STR.ru, {
+  'grp.io': 'Источники и потребители', 'type.emotor': 'электродвигатель', 'type.machine': 'машина (чёрный ящик)', 'size.emotor': 'Размер ⌀', 'size.machine': 'Размер',
+  'w.stall': '{a} опрокидывается: нагрузка выше всего, что может дать двигатель.', 'w.overload': '{a} перегружен: {k} × номинальный момент.',
+  'w.nostart': '{a} работает в этой точке, но сам под такой нагрузкой не тронется.', 'w.idleLoad': '{a} не приводится.',
+  'w.undercut': '{a}: меньше {z} зубьев, стандартный зуб будет подрезан.',
   'layer.name': 'имя', 'layer.open': 'Заблокировать слой', 'layer.locked': 'Заблокирован: разблокировать',
 });
 let lang = 'en';

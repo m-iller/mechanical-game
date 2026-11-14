@@ -38,13 +38,16 @@ const TYPES = {
   brake:    { pre: 'BR', grp: 'shafts', key: 'd',   lim: [12, 400, 1], def: 40, tog: 1 },
   diff:     { pre: 'D',  grp: 'shafts', key: 'z',   lim: [24, 300, 1], def: 40 },
   flywheel: { pre: 'F',  grp: 'shafts', key: 'd',   lim: [16, 800, 1], def: 70 },
+  emotor:   { pre: 'M',  grp: 'io',     key: 'd',   lim: [16, 400, 1], def: 44 },   // electric motor: always a source
+  machine:  { pre: 'X',  grp: 'io',     key: 'd',   lim: [16, 400, 1], def: 50 },   // black-box machine: always a load
   crank:    { pre: 'K',  grp: 'mech',   key: 'r',   lim: [3, 150, 1], def: 14, key2: 'l', lim2: [10, 600], dir: 1 },
   cam:      { pre: 'CM', grp: 'mech',   key: 'h',   lim: [1, 40, 1], def: 8,  dir: 1 },
   geneva:   { pre: 'GV', grp: 'mech',   key: 'z',   lim: [4, 24, 1], def: 4,  dir: 1 },
   ratchet:  { pre: 'RT', grp: 'mech',   key: 'z',   lim: [6, 200, 1], def: 16, tog: 1 },
 };
-const GROUPS = ['gears', 'flex', 'shafts', 'mech'];
-const DEFAULTS = { carrier: { n: 3 }, crank: { l: 40 }, ring: { loose: true }, clutch: { on: true }, brake: { on: true }, ratchet: { on: false } };
+const GROUPS = ['io', 'gears', 'flex', 'shafts', 'mech'];
+// a small catalogue motor (0.37 kW, 4 poles) and a machine that takes a constant 2 N·m
+const DEFAULTS = { emotor: { motor: { kind: 'induction', P: 370, n: 1320, ks: 2.2, km: 2.2, rpm: 1320, tq: 2.7 } }, machine: { load: { kind: 'const', tq: 2, n: 1000, eta: 0.9 } }, carrier: { n: 3 }, crank: { l: 40 }, ring: { loose: true }, clutch: { on: true }, brake: { on: true }, ratchet: { on: false } };
 const PROPS = ['z', 'zw', 'd', 'r', 'n', 'l', 'h', 'len', 'l0', 'l1', 'dir', 'on', 'loose', 'held', 'label'];
 const MOTOR_KEYS = ['kind', 'rpm', 'tq', 'P', 'n', 'ks', 'km'], LOAD_KEYS = ['kind', 'tq', 'n', 'eta', 'table'];
 const pickKeys = (o, keys) => { const r = {}; for (const k of keys) if (o[k] != null) r[k] = Array.isArray(o[k]) ? o[k].map(x => Array.isArray(x) ? x.slice() : x) : o[k]; return r; };
@@ -90,7 +93,7 @@ const RI = p => M * p.z / 2;                                      // a ring's in
 const RO = p => {
   switch (p.type) {
     case 'ring': return M * meshZ(p) / 2;
-    case 'pulley': case 'fric': case 'flywheel': case 'clutch': case 'brake': return p.d / 2;
+    case 'pulley': case 'fric': case 'flywheel': case 'clutch': case 'brake': case 'emotor': case 'machine': return p.d / 2;
     case 'sprocket': return p.z * CP / TAU;
     case 'carrier': return HUB;
     case 'crank': return p.r + 4;

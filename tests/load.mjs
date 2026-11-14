@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 
 export const CORE = ['core/units.js', 'core/explain.js', 'core/warn.js', 'core/ports.js', 'core/migrate.js', 'core/loads.js'];
-export const DRIVES = ['strings.js', ...CORE, 'model.js', 'paths.js', 'solver.js', 'templates.js'];
+export const DRIVES = ['strings.js', ...CORE, 'model.js', 'paths.js', 'solver.js', 'power.js', 'templates.js'];
 
 class Path2D { moveTo() {} lineTo() {} arc() {} rect() {} closePath() {} }
 

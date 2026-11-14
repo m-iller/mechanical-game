@@ -16,6 +16,8 @@ Gear Bench is growing from a drive sandbox into a rough-figures tool for mechani
 - Templates "Motor and fan" and "Motor, belt, planetary, chain, conveyor".
 - Calculation core without DOM in `src/js/core/` (units, explanations, warnings, energy ports, scene migrations, load characteristics) and tests: `npm test`.
 
+- Core for planar linkages (not yet in the interface): Chebyshev's mobility formula, Grashof's rule, positions, speeds and accelerations for mechanisms with revolute and prismatic pairs.
+
 ### Changed
 - Scenes are saved in format v3. Scenes from 2.x open and are migrated on load.
 - With loads on the bench, torque figures show the real power flow. Without loads the old estimate stays (all motor power taken at the chosen output) and says so in its explanation.

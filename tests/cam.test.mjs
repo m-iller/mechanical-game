@@ -84,3 +84,64 @@ test('offset follower on the bench: the roller centre stays on the pitch curve, 
   });
   for (const [d0, pe] of r) { close(d0, Math.sqrt(23 * 23 - 36), 1e-9); close(pe, 6, 1e-9); }
 });
+
+/* ---- flat and swinging followers, Geneva and ratchet ---- */
+test('flat-faced follower: the contact point lies s′ off the axis, the pressure angle is zero, and a small base circle is flagged', () => {
+  const r = bench().run(() => {
+    const c = { r: 20, h: 8, law: 'harm', b1: 90, bd: 0, b2: 90 }, f = { kind: 'flat', dir: 0 }, P = camPitch(c, f, [0, 0], 360), k = 30, [s, d1] = camS(c, 2 * Math.PI * k / 360), phi = 2 * Math.PI * k / 360;
+    const cs = Math.cos(phi), sn = Math.sin(phi), ax = P[k][0] * cs - P[k][1] * sn, off = P[k][0] * sn + P[k][1] * cs;   // back into the follower's frame
+    return { ax, off, s, d1, ok: camFollowerCheck(c, f, [0, 0]), bad: camFollowerCheck({ ...c, r: 6, h: 14, b1: 40, b2: 40 }, f, [0, 0]) };
+  });
+  close(r.ax, 20 + r.s, 1e-9); close(Math.abs(r.off), Math.abs(r.d1), 1e-9);
+  assert.equal(r.ok.alpha, 0); assert.ok(r.ok.rho > 0 && r.bad.rho < 0);      // ρ = r + s + s″
+});
+
+test('swinging follower: the roller starts on the base circle, the arm turns by s/L, and the pressure angle is found from the pitch curve', () => {
+  const r = bench().run(() => {
+    resetScene(1); const [c, f] = insertTemplate('camrocker', 0, 0); solve();
+    const e0 = jointPos(f, 1), d0 = Math.hypot(e0.x - c.x, e0.y - c.y), a0 = f.dir, out = { pairs: pairs.map(q => q.type), W: tmmInfo.groups.map(g => g.W), warn: warnings.map(w => w.code), d0 };
+    clock = (100 * Math.PI / 180) / c.w; tmmStep(); out.top = Math.abs(wrap(f.dir - a0)) * f.len;                 // on the top dwell: the full lift along the arc
+    const k = camFollowerCheck(c, folOf(f), [c.x, c.y]); out.alpha = k.alpha; out.rho = k.rho; out.series = tmmSeries(f).series.map(s => s.name);
+    return out;
+  });
+  assert.deepEqual(r.pairs, ['H']); assert.deepEqual(r.W, [1]); assert.deepEqual(r.warn, []);
+  close(r.d0, 23, 1e-9); close(r.top, 8, 1e-9);
+  assert.ok(r.alpha > 0.05 && r.alpha < Math.PI / 4 && r.rho > 5); assert.deepEqual(r.series, ['s', 'v', 'a', 'α']);
+});
+
+test('Geneva drive, z = 4: 90° per crank turn, moving for a quarter of it, top speed ω·λ/(1 − λ) on the line of centres', () => {
+  const lam = Math.SQRT1_2;
+  const r = bench().run(() => {
+    const at = f => genevaTurn(4, f), h = 1e-5;
+    return { a: [at(-3), at(-Math.PI / 4 + 1e-9), at(0), at(Math.PI / 4 - 1e-9), at(3), at(3 + 2 * Math.PI)], w: -(at(h).angle - at(-h).angle) / (2 * h), mid: at(0.3).angle };
+  });
+  close(r.a[0].angle, Math.PI / 4); assert.equal(r.a[0].moving, false);
+  close(r.a[1].angle, Math.PI / 4, 1e-6); close(r.a[2].angle, 0, 0, 1e-12); close(r.a[3].angle, -Math.PI / 4, 1e-6);
+  close(r.a[4].angle, -Math.PI / 4); close(r.a[5].angle, -Math.PI / 4 - Math.PI / 2, 1e-12);                       // a quarter turn on, the other way
+  close(r.w, lam / (1 - lam), 1e-6);                                                                               // 2.414
+  close(r.mid, Math.atan2(-lam * Math.sin(0.3), 1 - lam * Math.cos(0.3)), 1e-12);                                  // the slot keeps looking at the pin
+});
+
+test('Geneva wheel from links: snaps to a = r/sin(π/z), is driven by the crank pin, and its slot follows the pin while engaged', () => {
+  const r = bench().run(() => {
+    resetScene(1); const c = addPart('tcrank', { x: 0, y: 0, len: 20, dir: Math.PI, motor: { rpm: 30, tq: 2 } }), g = addPart('tgeneva', { x: 31, y: 2, z: 4 });
+    tmmAttach([g.id]); solve(); const a = Math.hypot(g.x, g.y), out = { a, pairs: pairs.map(q => [q.type, q.ja]), W: tmmInfo.groups.map(x => x.W), rows: [] };
+    const line = Math.atan2(g.y, g.x);
+    for (const deg of [0, 20, 40, 90, 180, 320, 360]) { c.dir = line + deg * Math.PI / 180; clock = 0; tmmStep(); const pin = jointPos(c, 1), toPin = Math.atan2(pin.y - g.y, pin.x - g.x); out.rows.push([deg, Math.abs(Math.sin(2 * (g.dir - toPin))), g.dir]); }
+    return out;
+  });
+  close(r.a, 20 / Math.SQRT1_2, 1e-9); assert.deepEqual(r.pairs, [['H', 1]]); assert.deepEqual(r.W, [1]);
+  for (const [deg, mis] of r.rows) if (deg < 45 || deg > 315) close(mis, 0, 0, 1e-9);                             // some slot points at the pin (slots are 90° apart)
+  close(Math.abs(Math.sin(2 * (r.rows[3][2] - r.rows[4][2]))), 0, 0, 1e-9);                                       // locked between 90° and 180°
+});
+
+test('ratchet from links: the wheel follows the rocker one way and stands on the way back; over a turn it gains the rocker\'s swing', () => {
+  const r = bench().run(() => {
+    resetScene(1); const m = insertTemplate('ratchetlinks', 0, 0), c = m[0], rk = m[3], w = m[4]; solve();
+    const out = { pairs: pairs.filter(q => q.type === 'H').length, W: tmmInfo.groups.map(g => g.W), ok: tmmInfo.ok }; let acc = 0, back = 0, prev = w.dir, lo = Infinity, hi = -Infinity, rd = rk.dir, ru = 0;
+    for (let k = 1; k <= 360; k++) { clock = k * (Math.PI / 180) / c.w; tmmStep(); const d = wrap(w.dir - prev); prev = w.dir; if (d < -1e-12) back++; acc += d; const dr = wrap(rk.dir - rd); rd = rk.dir; ru += dr; lo = Math.min(lo, ru); hi = Math.max(hi, ru); }
+    return { ...out, acc, back, swing: hi - lo };
+  });
+  assert.equal(r.pairs, 1); assert.deepEqual(r.W, [1]); assert.ok(r.ok);
+  assert.equal(r.back, 0); close(r.acc, r.swing, 2e-2); assert.ok(r.swing > 0.5);
+});

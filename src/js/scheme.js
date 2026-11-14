@@ -93,13 +93,31 @@ function tmmDraw(g, s) {
     case 'pivot': ctx.lineWidth = w; ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(-4.5, 8); ctx.lineTo(4.5, 8); ctx.closePath(); ctx.stroke(); hatchUnder(-6.5, 6.5, 8); break;
     case 'guide': hatchUnder(-g.len / 2, g.len / 2, 0); break;
     case 'tcam': { // the cam's working surface, with a mark at the start of the rise
-      const fo = parts.find(p => p.type === 'tfollow' && camOf(p) === g) || {}, pts = camProfile(g, fo.rr || 0, 120, fo.e || 0);
+      const ff = followerOf(g), pts = camSurface(g, ff ? folOf(ff) : { kind: 'roller', rr: 0, e: 0, dir: 0 }, [g.x, g.y], 180);
       ctx.beginPath(); pts.forEach((q, k) => k ? ctx.lineTo(q[0], q[1]) : ctx.moveTo(q[0], q[1])); ctx.closePath(); ctx.globalAlpha *= 0.1; ctx.fill(); ctx.globalAlpha /= 0.1; ctx.lineWidth = w; ctx.stroke();
       seg(0, 0, pts[0][0], pts[0][1], thin); break;
     }
     case 'tfollow': { // roller, stem, and the frame's guide around the stem
-      const rr = g.rr || 0; if (rr) { ctx.beginPath(); ctx.arc(0, 0, rr, 0, TAU); ctx.fillStyle = C.paper; ctx.fill(); ctx.lineWidth = w; ctx.stroke(); ctx.fillStyle = col; }
+      const flat = g.ft === 'flat', rr = flat ? 0 : g.rr || 0; if (rr) { ctx.beginPath(); ctx.arc(0, 0, rr, 0, TAU); ctx.fillStyle = C.paper; ctx.fill(); ctx.lineWidth = w; ctx.stroke(); ctx.fillStyle = col; }
+      if (flat) seg(0, -13, 0, 13, 2.6 / s);
       seg(rr, 0, FOLLOW_L, 0); if (camOf(g)) for (const sd of [-1, 1]) { seg(FOLLOW_L * 0.5, sd * 2.6, FOLLOW_L * 0.85, sd * 2.6); for (let x = FOLLOW_L * 0.5 + 1; x < FOLLOW_L * 0.85; x += 3) seg(x, sd * 2.6, x + 2, sd * 5.2, thin); }
+      break;
+    }
+    case 'tfollowr': { // arm on its fixed hinge, roller at the end
+      seg(0, 0, g.len, 0); const rr = g.rr || 0; if (rr) { ctx.beginPath(); ctx.arc(g.len, 0, rr, 0, TAU); ctx.fillStyle = C.paper; ctx.fill(); ctx.lineWidth = w; ctx.stroke(); ctx.fillStyle = col; }
+      if (!pairs.some(q => q.type === 'R' && ((q.a === g.id && q.ja === 0) || (q.b === g.id && q.jb === 0)))) { ctx.save(); ctx.rotate(-th); ctx.lineWidth = thin; ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(-4.5, 8); ctx.lineTo(4.5, 8); ctx.closePath(); ctx.stroke(); hatchUnder(-6.5, 6.5, 8); ctx.restore(); }
+      break;
+    }
+    case 'tgeneva': { // wheel with z radial slots; between them the rim is hollowed where the crank's locking disc sits
+      const R = wheelR(g), cr = camOf(g), rin = cr ? Math.max(3, cr.len / Math.sin(Math.PI / g.z) - cr.len - 2) : R * 0.35;
+      ctx.beginPath(); ctx.arc(0, 0, R, 0, TAU); ctx.globalAlpha *= 0.1; ctx.fill(); ctx.globalAlpha /= 0.1; ctx.lineWidth = w; ctx.stroke();
+      for (let k = 0; k < g.z; k++) { const a = TAU * k / g.z, cs = Math.cos(a), sn = Math.sin(a); seg(rin * cs + 1.3 * sn, rin * sn - 1.3 * cs, R * cs + 1.3 * sn, R * sn - 1.3 * cs, thin * 1.3); seg(rin * cs - 1.3 * sn, rin * sn + 1.3 * cs, R * cs - 1.3 * sn, R * sn + 1.3 * cs, thin * 1.3); }
+      break;
+    }
+    case 'tratchet': { // saw teeth leaning the way the wheel may turn
+      const R = wheelR(g), sg = g.sg || 1; ctx.beginPath(); for (let k = 0; k < g.z; k++) { const a0 = TAU * k / g.z, a1 = TAU * (k + 1) / g.z, [ra, rb] = sg > 0 ? [R, R - 2.4] : [R - 2.4, R]; ctx.lineTo(ra * Math.cos(a0), ra * Math.sin(a0)); ctx.lineTo(rb * Math.cos(a1), rb * Math.sin(a1)); }
+      ctx.closePath(); ctx.globalAlpha *= 0.1; ctx.fill(); ctx.globalAlpha /= 0.1; ctx.lineWidth = thin * 1.6; ctx.stroke();
+      const cr = camOf(g); if (cr) { ctx.save(); ctx.rotate(linkTh(cr) - th); seg(R + 7, -sg * 6, R - 1, 0, 2 / s); ctx.beginPath(); ctx.arc(R + 7, -sg * 6, 1.4, 0, TAU); ctx.fill(); ctx.restore(); }   // the pawl rides on the swinging link
       break;
     }
     case 'tcrank': seg(0, 0, g.len, 0, 2.6 / s); if (!paired.has(0)) { ctx.lineWidth = thin; ctx.save(); ctx.rotate(-th); ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(-4.5, 8); ctx.lineTo(4.5, 8); ctx.closePath(); ctx.stroke(); hatchUnder(-6.5, 6.5, 8); ctx.restore(); } break;
@@ -128,6 +146,7 @@ function tmmOutline(g) {
   else if (g.type === 'tplate') ctx.arc(g.r, 0, g.r + 4.5, 0, TAU);
   else if (g.type === 'pivot') ctx.rect(-8, -4, 16, 17);
   else if (g.type === 'tcam') ctx.arc(0, 0, g.r + g.h + 3, 0, TAU);
+  else if (g.type === 'tgeneva' || g.type === 'tratchet') ctx.arc(0, 0, wheelR(g) + 3, 0, TAU);
   else if (g.type === 'tfollow') ctx.rect(-(g.rr || 0) - 3, -6.5, FOLLOW_L + (g.rr || 0) + 6, 13);
   else ctx.rect(-10.5, -7, 21, 14);
   ctx.stroke(); ctx.restore();

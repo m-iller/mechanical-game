@@ -59,6 +59,9 @@ const TYPES = {
   tcoul:    { pre: 'L',  grp: 'tmm',    key: 'len', lim: [5, 2000, 0.5], def: 90, dir: 1 },         // slotted link: a stone slides along it
   tstone:   { pre: 'L',  grp: 'tmm',    dir: 1 },
   tcam:     { pre: 'L',  grp: 'tmm',    key: 'r',   lim: [5, 300, 0.5], def: 20, key2: 'h', lim2: [1, 100], dir: 1 },   // plate cam: base radius and lift; turns like a crank
+  tfollowr: { pre: 'L',  grp: 'tmm',    key: 'len', lim: [5, 1000, 0.5], def: 50, key2: 'rr', lim2: [0, 30], dir: 1 },   // swinging follower: arm about a fixed point, roller at its end
+  tgeneva:  { pre: 'L',  grp: 'tmm',    key: 'z',   lim: [3, 12, 1], def: 4, dir: 1 },                             // Geneva wheel: turned step by step by a crank's pin
+  tratchet: { pre: 'L',  grp: 'tmm',    key: 'z',   lim: [6, 120, 1], def: 16, dir: 1 },                           // ratchet wheel: carried one way by a swinging link's pawl
   tfollow:  { pre: 'L',  grp: 'tmm',    key: 'rr',  lim: [0, 30, 0.5], def: 4, dir: 1 },                           // translating follower with a roller
   tplate:   { pre: 'L',  grp: 'tmm',    key: 'r',   lim: [4, 500, 1], def: 20, key2: 'n', lim2: [3, 8], dir: 1 },   // rigid link with n joints
   /* hydraulic drive. Ports are points in the part's own frame (domains/hydro/scene.js); pipes join them.
@@ -92,8 +95,8 @@ const DEFAULTS = { emotor: { motor: { kind: 'induction', P: 370, n: 1320, ks: 2.
   engine: { motor: { kind: 'ice', tq: 100, n: 5000, rpm: 3000 }, eD: 80, eS: 90, eps: 9.5, cyl: 4, ekind: 'otto', thr: 1 }, hand: { motor: { kind: 'torque', tq: 12, n: 60, rpm: 60 } },
   weight: { m: 20, motor: { kind: 'torque', tq: 4, n: 3000, rpm: 100 } }, spring: { M: 2, motor: { kind: 'torque', tq: 2, n: 3000, rpm: 100 } },
   tcomp: { mf: 1, etaC: 0.85 }, tturb: { etaT: 0.88, a1: 16, zst: 1, rho: 0, nmax: 12000 }, tboil: { mf: 1, Tb: 350 },
-  generator: { Pn: 3000, nn: 3000, ge: 0.9 }, heater: { hm: 2, hk: 5 }, hoist: { m: 50 }, conveyor: { F: 1000, len: 160 }, carrier: { n: 3 }, tplate: { n: 3 }, tcam: { h: 8 }, hcyl: { st: 60, s: 0, F: 0 }, hvalve: { pos: 0 }, crank: { l: 40 }, ring: { loose: true }, clutch: { on: true }, brake: { on: true }, ratchet: { on: false } };
-const PROPS = ['z', 'zw', 'd', 'r', 'n', 'l', 'h', 'len', 'l0', 'l1', 'dir', 'on', 'loose', 'held', 'label', 'F', 'fw', 'm', 'J', 'rr', 'law', 'b1', 'bd', 'b2', 'q', 'pset', 'dn', 'pos', 'st', 's', 'dr', 'M', 'Fb', 'Pn', 'nn', 'ge', 'hm', 'hk', 'eD', 'eS', 'eps', 'cyl', 'ekind', 'thr', 'e', 'grav', 'pr', 'mf', 'nd', 'etaC', 'T3', 'dm', 'etaT', 'a1', 'zst', 'rho', 'nmax', 'pb', 'Tb', 'pk'];
+  generator: { Pn: 3000, nn: 3000, ge: 0.9 }, heater: { hm: 2, hk: 5 }, hoist: { m: 50 }, conveyor: { F: 1000, len: 160 }, carrier: { n: 3 }, tplate: { n: 3 }, tcam: { h: 8 }, tfollowr: { rr: 4 }, hcyl: { st: 60, s: 0, F: 0 }, hvalve: { pos: 0 }, crank: { l: 40 }, ring: { loose: true }, clutch: { on: true }, brake: { on: true }, ratchet: { on: false } };
+const PROPS = ['z', 'zw', 'd', 'r', 'n', 'l', 'h', 'len', 'l0', 'l1', 'dir', 'on', 'loose', 'held', 'label', 'F', 'fw', 'm', 'J', 'rr', 'law', 'b1', 'bd', 'b2', 'q', 'pset', 'dn', 'pos', 'st', 's', 'dr', 'M', 'Fb', 'Pn', 'nn', 'ge', 'hm', 'hk', 'eD', 'eS', 'eps', 'cyl', 'ekind', 'thr', 'e', 'grav', 'ft', 'side', 'sg', 'pr', 'mf', 'nd', 'etaC', 'T3', 'dm', 'etaT', 'a1', 'zst', 'rho', 'nmax', 'pb', 'Tb', 'pk'];
 const MOTOR_KEYS = ['kind', 'rpm', 'tq', 'P', 'n', 'ks', 'km'], LOAD_KEYS = ['kind', 'tq', 'n', 'eta', 'table'];
 const pickKeys = (o, keys) => { const r = {}; for (const k of keys) if (o[k] != null) r[k] = Array.isArray(o[k]) ? o[k].map(x => Array.isArray(x) ? x.slice() : x) : o[k]; return r; };
 
@@ -158,7 +161,7 @@ const RO = p => {
     case 'crank': return p.r + 4;
     case 'cam': return CB + p.h;
     case 'geneva': return GA + 3;
-    case 'shaft': case 'pivot': case 'guide': case 'tcrank': case 'trod': case 'trocker': case 'hcyl': case 'tslider': case 'tcam': case 'tfollow': case 'tcoul': case 'tstone': case 'tplate': return 3;
+    case 'shaft': case 'pivot': case 'guide': case 'tcrank': case 'trod': case 'trocker': case 'hcyl': case 'tslider': case 'tcam': case 'tfollowr': case 'tgeneva': case 'tratchet': case 'tfollow': case 'tcoul': case 'tstone': case 'tplate': return 3;
     case 'rack': case 'worm': case 'hshaft': return 0;
     default: return M * p.z / 2;
   }

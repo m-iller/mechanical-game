@@ -49,7 +49,7 @@ const linksOf = p => links.filter(L => L.ids.includes(p.id));
 // structure of the mechanism a link belongs to
 function linkRows(p) {
   const g = tmmInfo.of.get(p.id); if (!g || !(g.p5 + g.pf)) return [];
-  const A = tmmAssur(g), drv = g.ids.map(byId).filter(q => q && (isDriver(q) || (q.type === 'tfollow' && camOf(q)))), q6 = g.W - 6 * g.n + 5 * g.p5 + 4 * g.p4;
+  const A = tmmAssur(g), drv = g.ids.map(byId).filter(q => q && (isDriver(q) || (RIDERS.includes(q.type) && camOf(q)))), q6 = g.W - 6 * g.n + 5 * g.p5 + 4 * g.p4;
   const chain = [`I(${drv.map(q => q.name).join(', ')})`, ...A.groups.map(x => `${x.cls}(${nameOf(x.ids)})`), ...(A.left.length ? [`?(${nameOf(A.left)})`] : [])].join(' → ');
   return [[t('io.links'), `${g.n}`], [t('io.p5'), `${g.p5}`],
     [t('io.W'), `${g.W}`, ex('W', g.W, '', 'W = 3·n − 2·p₅ − p₄', [['n', g.n, ''], ['p₅', g.p5, ''], ['p₄', g.p4, '']], ['ex.cheb'])],
@@ -290,7 +290,7 @@ function renderLayers() {
 }
 function renderSel() {
   const ps = selParts(), p = ps.length === 1 ? ps[0] : null, body = $('sel-body');
-  const key = JSON.stringify([sceneGen, selPipe, pipeDraft && [pipeDraft.a, 1], pipes.map(q => [q.id, q.kind, q.fluid, q.mat, q.pts.length]), lang, layerCount, linkDraft && [linkDraft.kind, linkDraft.ids], outId, links.map(L => [L.ids, L.crossed]), ps.map(q => [q.id, q.type, q.layer, q.on, q.held, q.loose, !!q.motor, q.load && q.load.kind, q.mount && q.mount.c, q.l0, q.l1, q.law, q.pos, q.st, q.ekind, q.grav]), pairs.map(q => [q.id, q.type])]);
+  const key = JSON.stringify([sceneGen, selPipe, pipeDraft && [pipeDraft.a, 1], pipes.map(q => [q.id, q.kind, q.fluid, q.mat, q.pts.length]), lang, layerCount, linkDraft && [linkDraft.kind, linkDraft.ids], outId, links.map(L => [L.ids, L.crossed]), ps.map(q => [q.id, q.type, q.layer, q.on, q.held, q.loose, !!q.motor, q.load && q.load.kind, q.mount && q.mount.c, q.l0, q.l1, q.law, q.pos, q.st, q.ekind, q.grav, q.ft]), pairs.map(q => [q.id, q.type])]);
   $('sel-name').textContent = p ? `${p.name} · ${typeName(p)}` : ps.length ? t('sel.many', { n: ps.length }) : t('sel.none');
   if (key !== selKey) {
     selKey = key; selRefresh = []; graphTick = null; body.textContent = '';
@@ -689,7 +689,7 @@ function drawTriangles(cvs, p) {
 }
 
 /* ---------- pointer input ---------- */
-const pts = new Map(); let drag = null, pan = null, pinch = null, holdTimer = null;
+const pts = new Map(); let pdrag = null, drag = null, pan = null, pinch = null, holdTimer = null;
 const pos = e => { const r = cv.getBoundingClientRect(); return { x: e.clientX - r.left, y: e.clientY - r.top }; };
 function hitTop(g, w) {
   if (T(g).grp === 'heat') return Math.hypot(w.x - g.x, w.y - g.y) < 11;
@@ -753,7 +753,13 @@ cv.addEventListener('pointerdown', e => {
   } else {
     if (g) pick([g.id]);
     const hp = !g && !side && pipeAt(toWorld(p.x, p.y), Math.max(2, 6 / view.scale));
-    if (hp) { sel = new Set(); selPipe = hp.q.id; ui(); return; }
+    if (hp) { // a pipe: the first click picks it; then a corner can be dragged, and a drag off a straight run makes a new corner
+      const w = toWorld(p.x, p.y), q = hp.q, was = selPipe === q.id, r2 = Math.max(3, 9 / view.scale); let i = q.pts.findIndex(v => Math.hypot(v[0] - w.x, v[1] - w.y) < r2), fresh = false;
+      sel = new Set(); selPipe = q.id;
+      if (i < 0 && was) { i = hp.i - 1; q.pts.splice(i, 0, [hp.x, hp.y]); fresh = true; }
+      if (i >= 0) pdrag = { q, i, fresh, moved: false, sx: p.x, sy: p.y };
+      ui(); return;
+    }
     if (!g && selPipe != null) { selPipe = null; ui(); }
     pan = { sx: p.x, sy: p.y, cx: view.cx, cy: view.cy, moved: false, side, onPart: !!g };
     const startBox = () => { if (pan && !pan.moved && !side) { pan = null; boxSel = { x0: p.x, y0: p.y, x1: p.x, y1: p.y }; cv.classList.add('boxing'); } };
@@ -768,6 +774,11 @@ cv.addEventListener('pointermove', e => {
     const [a, b] = [...pts.values()], mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
     view.scale = Math.max(0.5, Math.min(12, pinch.scale * Math.hypot(a.x - b.x, a.y - b.y) / pinch.d));
     view.cx = pinch.w.x - (mx - W / 2) / view.scale; if (!pinch.side) view.cy = pinch.w.y - (my - topMid()) / view.scale;
+  } else if (pdrag) {
+    if (!pdrag.moved && Math.hypot(p.x - pdrag.sx, p.y - pdrag.sy) < 4) return;
+    pdrag.moved = true; const w = toWorld(p.x, Math.max(bandH(), p.y)), P = pipePath(pdrag.q), a = P[pdrag.i], b = P[pdrag.i + 2], sn = 5 / view.scale;   // square to its neighbours when close
+    const x = Math.abs(w.x - a.x) < sn ? a.x : Math.abs(w.x - b.x) < sn ? b.x : w.x, y = Math.abs(w.y - a.y) < sn ? a.y : Math.abs(w.y - b.y) < sn ? b.y : w.y;
+    pdrag.q.pts[pdrag.i] = [x, y]; changed();
   } else if (boxSel) { boxSel.x1 = p.x; boxSel.y1 = Math.max(bandH(), p.y); }
   else if (drag) {
     if (!drag.moved && Math.hypot(p.x - drag.sx, p.y - drag.sy) < 4) return;
@@ -823,6 +834,11 @@ const up = e => {
     const inside = parts.filter(g => canPick(g) && g.x >= a.x && g.x <= b.x && g.y >= a.y && g.y <= b.y).map(g => g.id);
     boxSel = null; cv.classList.remove('boxing'); pick(inside, e.shiftKey);
   } else if (pan && !pan.moved && !pan.onPart && sel.size) pick([]);
+  if (pdrag) { // a corner left on the straight line between its neighbours is not a corner
+    const q = pdrag.q, P = pipePath(q), a = P[pdrag.i], c = P[pdrag.i + 1], b = P[pdrag.i + 2], L = Math.hypot(b.x - a.x, b.y - a.y) || 1, off = Math.abs((b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x)) / L;
+    if ((pdrag.fresh && !pdrag.moved) || off < 1.2) q.pts.splice(pdrag.i, 1);
+    const moved = pdrag.moved; pdrag = null; if (moved) commit(); else ui();
+  }
   if (drag && !drag.moved && !drag.side && drag.g.type === 'hvalve') { // a click on one of the valve's boxes switches it there
     const g = drag.g, u = unit(g.dir || 0), lx = (drag.w0.x - g.x) * u[0] + (drag.w0.y - g.y) * u[1]; g.pos = lx < -6 ? 1 : lx > 6 ? -1 : 0; commit();
   }

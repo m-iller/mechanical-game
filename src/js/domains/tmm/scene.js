@@ -6,10 +6,14 @@
 'use strict';
 
 const FOLLOW_L = 34;
-const BAR = ['tcrank', 'trod', 'trocker', 'tcoul', 'hcyl'], SLIDES = ['tslider', 'tstone'], RAILS = ['guide', 'tcoul'];
+const RIDERS = ['tfollow', 'tfollowr', 'tgeneva', 'tratchet'];   // links placed by a higher pair, not by the pair equations
+const BAR = ['tcrank', 'trod', 'trocker', 'tcoul', 'hcyl', 'tfollowr'], SLIDES = ['tslider', 'tstone'], RAILS = ['guide', 'tcoul'];
 // links whose pose is given rather than solved: the frame, the driven links, and a follower riding a cam
 const camOf = p => { const q = pairs.find(x => x.type === 'H' && x.b === p.id); return q ? byId(q.a) : null; };
-const linkFixed = p => ty(p, 'pivot', 'guide', 'tcrank', 'tcam') || (p.type === 'tfollow' && !!camOf(p));
+const linkFixed = p => ty(p, 'pivot', 'guide', 'tcrank', 'tcam') || (RIDERS.includes(p.type) && !!camOf(p));
+// what the cam needs to know about its follower
+const folOf = f => f.type === 'tfollowr' ? { kind: 'rock', rr: f.rr || 0, O: [f.x, f.y], L: f.len, side: f.side || 1 } : f.ft === 'flat' ? { kind: 'flat', dir: f.dir } : { kind: 'roller', rr: f.rr || 0, e: f.e || 0, dir: f.dir };
+const followerOf = c => parts.find(p => ty(p, 'tfollow', 'tfollowr') && camOf(p) === c);
 const linkTh = p => isDriver(p) ? p.dir + (p.w || 0) * (clock + jit) : p.dir || 0;
 // joints in the link's own frame
 function jointsOf(p) {
@@ -24,6 +28,8 @@ const jointPos = (p, k) => toWorldOf(p, jointsOf(p)[k]);
 const railSpan = p => p.type === 'guide' ? [-p.len / 2, p.len / 2] : [0, p.len];
 // where a point lies on a rail: al along it, pe across it
 const onRail = (r, pt) => { const th = linkTh(r), dx = pt.x - r.x, dy = pt.y - r.y; return { al: dx * Math.cos(th) + dy * Math.sin(th), pe: -dx * Math.sin(th) + dy * Math.cos(th) }; };
+// outer radius of a Geneva or ratchet wheel as drawn: a Geneva wheel's follows from its crank, a ratchet's from its teeth
+const wheelR = g => { if (g.type === 'tratchet') return Math.max(8, g.z * 0.9); const c = camOf(g); return c ? c.len / Math.tan(Math.PI / g.z) : 26; };
 const pairsOf = p => pairs.filter(q => q.a === p.id || q.b === p.id);
 function addPair(type, a, ja, b, jb, turn) { const q = { id: nextId++, type, a: a.id, ja: ja || 0, b: b.id, jb: jb || 0, turn: turn || 0 }; pairs.push(q); return q; }
 
@@ -48,7 +54,13 @@ function tmmMech() {
    a crank too long for its chain, a rod pulled off its slider's stroke. The links then stay where they were. */
 // a follower sits on its cam: on the ray from the cam's centre along the follower's own direction, at the pitch radius for the cam's angle
 function tmmFollow() {
-  for (const q of pairs) if (q.type === 'H') { const c = byId(q.a), f = byId(q.b); if (!c || !f) continue; const e = f.e || 0, d = camReach(c, f.rr || 0, e) + camS(c, linkTh(c) - f.dir)[0]; f.x = c.x + d * Math.cos(f.dir) - e * Math.sin(f.dir); f.y = c.y + d * Math.sin(f.dir) + e * Math.cos(f.dir); }
+  for (const q of pairs) if (q.type === 'H') {
+    const c = byId(q.a), f = byId(q.b); if (!c || !f) continue;
+    if (f.type === 'tfollow') { const P = camPose(c, folOf(f), [c.x, c.y], linkTh(c)); f.x = P.x; f.y = P.y; }
+    else if (f.type === 'tfollowr') f.dir = camPose(c, folOf(f), [c.x, c.y], linkTh(c)).dir;
+    else if (f.type === 'tgeneva') f.dir = Math.atan2(c.y - f.y, c.x - f.x) + genevaTurn(f.z, linkTh(c) - Math.atan2(f.y - c.y, f.x - c.x)).angle;   // a slot looks at the crank when the pin is on the line of centres
+    else if (f.type === 'tratchet') { const th = linkTh(c), d = f._pa == null ? 0 : wrap(th - f._pa), sg = f.sg || 1; f._pa = th; if (d * sg > 0) f.dir = wrap((f.dir || 0) + d); }   // the pawl carries the wheel one way and slips back over the teeth
+  }
 }
 function tmmStep() {
   tmmFollow();
@@ -91,10 +103,12 @@ function tmmStepOk() { const mech = tmmMech(); if (!mech.pairs.length) return tr
 addCheck('cam', () => {
   const out = [];
   for (const c of parts) if (c.type === 'tcam') {
-    const f = parts.find(p => p.type === 'tfollow' && camOf(p) === c), rr = f ? f.rr || 0 : 0, k = camCheck(c, rr, Math.PI / 6, 720, f ? f.e || 0 : 0);
+    const f = followerOf(c), fo = f ? folOf(f) : { kind: 'roller', rr: 0, e: 0, dir: 0 }, rr = fo.rr || 0, k = camFollowerCheck(c, fo, [c.x, c.y]), D = 180 / Math.PI;
     if (!camPlan(c).fits) out.push({ level: 'error', code: 'w.camPlan', text: t('w.camPlan', { a: c.name }), ids: [c.id] });
-    if (k.alpha > Math.PI / 6 + 1e-9) out.push({ level: 'warn', code: 'w.camAngle', text: t('w.camAngle', { a: c.name, d: fmtNum(k.alpha * 180 / Math.PI, 3), r: fmtNum(k.rmin, 3) }), ids: [c.id] });
-    if (rr && k.rho <= rr) out.push({ level: 'warn', code: 'w.camCurv', text: t('w.camCurv', { a: c.name, d: fmtNum(k.rho, 3) }), ids: [c.id] });
+    if (k.alpha > k.allow + 1e-9) out.push(k.rmin ? { level: 'warn', code: 'w.camAngle', text: t('w.camAngle', { a: c.name, d: fmtNum(k.alpha * D, 3), r: fmtNum(k.rmin, 3) }), ids: [c.id] } : { level: 'warn', code: 'w.camAngle2', text: t('w.camAngle2', { a: c.name, d: fmtNum(k.alpha * D, 3), m: Math.round(k.allow * D) }), ids: [c.id] });
+    if (k.flat && k.rho <= 0) out.push({ level: 'warn', code: 'w.camFlat', text: t('w.camFlat', { a: c.name }), ids: [c.id] });
+    if (fo.kind === 'rock' && f && !camPose(c, fo, [c.x, c.y], 0).fits) out.push({ level: 'error', code: 'w.camReach', text: t('w.camReach', { a: f.name }), ids: [f.id] });
+    if (!k.flat && rr && k.rho <= rr) out.push({ level: 'warn', code: 'w.camCurv', text: t('w.camCurv', { a: c.name, d: fmtNum(k.rho, 3) }), ids: [c.id] });
     if ((c.law || 'cyc') === 'lin') out.push({ level: 'info', code: 'w.camShock', text: t('w.camShock', { a: c.name }), ids: [c.id] });
   }
   return out;
@@ -136,7 +150,7 @@ function tmmAttach(ids) {
   const set = new Set(ids), made = [];
   for (const id of ids) {
     const p = byId(id); if (!p || !isLink(p)) continue;
-    jointsOf(p).forEach((_, k) => {
+    if (!ty(p, 'tgeneva', 'tratchet')) jointsOf(p).forEach((_, k) => {   // a wheel's own hinge on the frame comes with its higher pair
       const at = jointPos(p, k), mates = pinMates(p, k);
       const hits = allJoints(new Set([p.id])).filter(j => Math.hypot(j.x - at.x, j.y - at.y) < NEAR_MM && !mates.has(j.p.id + ':' + j.k) && !(linkFixed(p) && linkFixed(j.p)));
       if (hits.length) { const j = hits.find(h => linkFixed(h.p)) || hits[0]; made.push(addPair('R', j.p, j.k, p, k)); }
@@ -144,6 +158,18 @@ function tmmAttach(ids) {
     if (p.type === 'tfollow' && !camOf(p)) { // a follower dropped beside a cam rides it, pointing away from the cam's centre
       const c = parts.find(o => o.type === 'tcam' && Math.hypot(o.x - p.x, o.y - p.y) < o.r + o.h + (p.rr || 0) + 14);
       if (c) { if (!p.e) p.dir = Math.atan2(p.y - c.y, p.x - c.x); made.push(addPair('H', c, 0, p, 0)); }
+    }
+    if (p.type === 'tfollowr' && !camOf(p)) { // a swinging follower whose roller is dropped on a cam rides it; which side of the line of centres it lies on is kept
+      const e = jointPos(p, 1), c = parts.find(o => o.type === 'tcam' && Math.hypot(o.x - e.x, o.y - e.y) < o.r + o.h + (p.rr || 0) + 14);
+      if (c) { p.side = wrap(p.dir - Math.atan2(c.y - p.y, c.x - p.x)) < 0 ? -1 : 1; made.push(addPair('H', c, 0, p, 0)); }
+    }
+    if (p.type === 'tgeneva' && !camOf(p)) { // a Geneva wheel dropped at about the right distance from a crank is set at exactly a = r / sin(π/z)
+      const c = parts.find(o => o.type === 'tcrank' && Math.abs(Math.hypot(o.x - p.x, o.y - p.y) * Math.sin(Math.PI / p.z) / o.len - 1) < 0.25);
+      if (c) { const a = c.len / Math.sin(Math.PI / p.z), d = Math.hypot(p.x - c.x, p.y - c.y) || 1; p.x = c.x + (p.x - c.x) * a / d; p.y = c.y + (p.y - c.y) * a / d; made.push(addPair('H', c, 1, p, 0)); }
+    }
+    if (p.type === 'tratchet' && !camOf(p)) { // a ratchet wheel dropped on the fixed hinge of a swinging link is worked by that link's pawl
+      const j = allJoints(new Set([p.id])).find(o => !linkFixed(o.p) && BAR.includes(o.p.type) && Math.hypot(o.x - p.x, o.y - p.y) < NEAR_MM * 4);
+      if (j) { p.x = j.x; p.y = j.y; delete p._pa; made.push(addPair('H', j.p, j.k, p, 0)); }
     }
     const rails = SLIDES.includes(p.type) ? parts.filter(r => RAILS.includes(r.type) && r.id !== p.id).map(r => [r, p]) : RAILS.includes(p.type) ? parts.filter(s => SLIDES.includes(s.type)).map(s => [p, s]) : [];
     for (const [r, s] of rails) {
@@ -180,6 +206,7 @@ function tmmHit(g, w, r = 3.2) {
   if (SLIDES.includes(g.type)) return Math.abs(f.al) < 8 && Math.abs(f.pe) < 5 ? 'body' : null;
   if (g.type === 'pivot') return f.pe > -2 && f.pe < 10 && Math.abs(f.al) < 6 ? 'body' : null;
   if (g.type === 'tcam') return Math.hypot(w.x - g.x, w.y - g.y) < g.r + g.h ? 'body' : null;
+  if (g.type === 'tgeneva' || g.type === 'tratchet') return Math.hypot(w.x - g.x, w.y - g.y) < wheelR(g) ? 'body' : null;
   if (g.type === 'tfollow') return Math.abs(f.pe) < r && f.al > -(g.rr || 0) - 2 && f.al < FOLLOW_L ? 'body' : null;
   if (g.type === 'tplate') { const c = toWorldOf(g, [g.r, 0]); return Math.hypot(w.x - c.x, w.y - c.y) < g.r ? 'body' : null; }
   return null;

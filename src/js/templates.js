@@ -135,6 +135,22 @@ const TEMPLATES = {
     addPipe(g, 0, h, 0, { fluid: 'el' });
     return [b, tb, addPart('shaft', { x, y, l0: L, l1: L + 1 }), g, cd, fp, h];
   } },
+  // Geneva drive from links: a crank with a pin and a wheel of four slots at a = r / sin(π/z)
+  genevalinks: { layers: 1, build(x, y, L) {
+    const c = addPart('tcrank', { x, y, layer: L, len: 20, dir: Math.PI, motor: { rpm: 30, tq: 2 } }), g = addPart('tgeneva', { x: x + 20 / Math.sin(Math.PI / 4), y, layer: L, z: 4 });
+    tmmAttach([g.id]); return [c, g];
+  } },
+  // ratchet feed: a crank-rocker swings a rocker whose pawl carries a ratchet wheel round one way
+  ratchetlinks: { layers: 1, build(x, y, L) {
+    const m = TEMPLATES.fourbar.build(x, y, L), rk = m[3], w = addPart('tratchet', { x: rk.x, y: rk.y, layer: L, z: 24 });
+    tmmAttach([w.id]); return [...m, w];
+  } },
+  // cam with a swinging roller follower
+  camrocker: { layers: 1, build(x, y, L) {
+    const c = addPart('tcam', { x, y, layer: L, r: 18, h: 8, law: 'cyc', b1: 90, bd: 30, b2: 90, dir: 0, motor: { rpm: 300, tq: 2 } }), O = { x: x + 45, y: y - 35 }, a = Math.atan2(y - 23 - O.y, x - O.x);
+    const f = addPart('tfollowr', { x: O.x, y: O.y, layer: L, len: Math.hypot(x - O.x, y - 23 - O.y), rr: 5, dir: a });
+    tmmAttach([f.id]); return [c, f];
+  } },
   // four-bar: crank 20, coupler 70, rocker 50, frame 80 — a crank-rocker by Grashof's rule
   fourbar: { layers: 1, build(x, y, L) {
     const a = 20, b = 70, c = 50, d = 80, B = { x, y: y - a }, dx = x + d - B.x, dy = y - B.y, f = Math.hypot(dx, dy), k = (b * b - c * c + f * f) / (2 * f), h = Math.sqrt(b * b - k * k);

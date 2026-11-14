@@ -50,3 +50,60 @@ function camProfile(c, rr, N = 240, e = 0) {
   if (!rr) return pitch;
   return pitch.map((p, k) => { const a = pitch[mod(k - 1, N)], b = pitch[(k + 1) % N], tx = b[0] - a[0], ty2 = b[1] - a[1], L = Math.hypot(tx, ty2) || 1; let nx = ty2 / L, ny = -tx / L; if (nx * p[0] + ny * p[1] > 0) { nx = -nx; ny = -ny; } return [p[0] + nx * rr, p[1] + ny * rr]; });
 }
+
+/* ---------- any follower on a cam ----------
+   f describes the follower:  { kind: 'roller', rr, e, dir }   translating with a roller, offset e, moving along dir
+                              { kind: 'flat', dir }            translating with a flat face square to dir
+                              { kind: 'rock', rr, O, L, side } swinging arm of length L about the fixed point O, roller at its end
+   C is the cam's centre. For a swinging arm the law gives the arc the roller travels: its angle grows by s/L. */
+function camPose(c, f, C, th) {
+  if (f.kind === 'rock') {
+    const A = Math.hypot(C[0] - f.O[0], C[1] - f.O[1]), beta = Math.atan2(C[1] - f.O[1], C[0] - f.O[0]), R0 = c.r + f.rr, s = camS(c, th)[0];
+    const psi0 = Math.acos(Math.max(-1, Math.min(1, (A * A + f.L * f.L - R0 * R0) / (2 * A * f.L)))), dir = beta + f.side * (psi0 + s / f.L);
+    return { x: f.O[0] + f.L * Math.cos(dir), y: f.O[1] + f.L * Math.sin(dir), dir, fits: Math.abs(A - f.L) < R0 && A + f.L > R0 };
+  }
+  const s = camS(c, th - f.dir)[0], e = f.kind === 'flat' ? 0 : f.e || 0, d = (f.kind === 'flat' ? c.r : camReach(c, f.rr, e)) + s, u = [Math.cos(f.dir), Math.sin(f.dir)];
+  return { x: C[0] + d * u[0] - e * u[1], y: C[1] + d * u[1] + e * u[0], dir: f.dir, fits: true };
+}
+// the curve the follower's reference point draws on the cam (in the cam's frame): the roller centre, or for a flat face the contact point itself
+function camPitch(c, f, C, N = 240) {
+  return [...Array(N)].map((_, k) => {
+    const phi = TAU * k / N;
+    if (f.kind === 'flat') { const [s, d1] = camS(c, phi), cs = Math.cos(-phi), sn = Math.sin(-phi); return [(c.r + s) * cs + d1 * sn, (c.r + s) * sn - d1 * cs]; }   // contact sits s′ off the follower's axis
+    const th = phi + (f.kind === 'rock' ? 0 : f.dir), P = camPose(c, f, C, th), dx = P.x - C[0], dy = P.y - C[1], cs = Math.cos(-th), sn = Math.sin(-th);
+    return [dx * cs - dy * sn, dx * sn + dy * cs];
+  });
+}
+// the cam's working surface: the pitch curve moved in by the roller radius
+function camSurface(c, f, C, N = 240) {
+  const pitch = camPitch(c, f, C, N), rr = f.kind === 'flat' ? 0 : f.rr || 0; if (!rr) return pitch;
+  return pitch.map((p, k) => { const a = pitch[mod(k - 1, N)], b = pitch[(k + 1) % N], tx = b[0] - a[0], ty2 = b[1] - a[1], L = Math.hypot(tx, ty2) || 1; let nx = ty2 / L, ny = -tx / L; if (nx * p[0] + ny * p[1] > 0) { nx = -nx; ny = -ny; } return [p[0] + nx * rr, p[1] + ny * rr]; });
+}
+/* Figures over the turn for any follower: pressure angle at each step and its largest value, the smallest radius of curvature,
+   the angle usually allowed (30° translating, 45° swinging), and whether the surface stays convex (flat face) or clear of undercut. */
+function camFollowerCheck(c, f, C, N = 360) {
+  const alphas = new Array(N).fill(0); let rho = Infinity, vmax = 0, amax = 0;
+  for (let k = 0; k < N; k++) { const [, d1, d2] = camS(c, TAU * k / N); vmax = Math.max(vmax, Math.abs(d1)); amax = Math.max(amax, Math.abs(d2)); }
+  if (f.kind === 'flat') { for (let k = 0; k < N; k++) { const [s, , d2] = camS(c, TAU * k / N); rho = Math.min(rho, c.r + s + d2); } return { alphas, alpha: 0, rho, allow: Math.PI / 6, vmax, amax, rmin: 0, flat: true }; }
+  if (f.kind === 'roller') { const k0 = camCheck(c, f.rr, Math.PI / 6, N, f.e || 0); for (let k = 0; k < N; k++) alphas[k] = camPressure(c, f.rr, TAU * k / N, f.e || 0); return { alphas, alpha: k0.alpha, rho: k0.rho, allow: Math.PI / 6, vmax, amax, rmin: k0.rmin }; }
+  const P = camPitch(c, f, C, N);
+  for (let k = 0; k < N; k++) {
+    const a = P[mod(k - 1, N)], b = P[k], d = P[(k + 1) % N], th = TAU * k / N, tx = d[0] - a[0], ty2 = d[1] - a[1], L = Math.hypot(tx, ty2) || 1, cs = Math.cos(th), sn = Math.sin(th);
+    const nx = (ty2 * cs + tx * sn) / L, ny = (ty2 * sn - tx * cs) / L, dir = camPose(c, f, C, th).dir, dot = Math.abs(-nx * Math.sin(dir) + ny * Math.cos(dir));
+    alphas[k] = Math.acos(Math.min(1, dot));
+    const ab = Math.hypot(b[0] - a[0], b[1] - a[1]), bd = Math.hypot(d[0] - b[0], d[1] - b[1]), ad = L, area = Math.abs((b[0] - a[0]) * (d[1] - a[1]) - (d[0] - a[0]) * (b[1] - a[1])) / 2;
+    const turn = (b[0] - a[0]) * (d[1] - b[1]) - (b[1] - a[1]) * (d[0] - b[0]);   // the curve runs clockwise in the cam's frame: convex where this is negative
+    if (area > 1e-12 && turn < 0) rho = Math.min(rho, ab * bd * ad / (4 * area));
+  }
+  return { alphas, alpha: Math.max(...alphas), rho, allow: Math.PI / 4, vmax, amax, rmin: 0 };
+}
+
+/* ---------- Geneva drive ----------
+   A crank of radius r with a pin turns a wheel of z radial slots; centre distance a = r / sin(π/z), so the pin enters and leaves
+   each slot along the slot. phi is the crank angle from the line crank → wheel. The wheel turns only while |phi| < π/2 − π/z
+   in each crank turn, by 2π/z the other way, and stands still (locked) for the rest. Returns the wheel's angle from the line wheel → crank. */
+function genevaTurn(z, phi) {
+  const n = Math.floor((phi + Math.PI) / TAU), f = phi - n * TAU, lam = Math.sin(Math.PI / z), f0 = Math.PI / 2 - Math.PI / z;
+  const d = Math.abs(f) < f0 ? Math.atan2(-lam * Math.sin(f), 1 - lam * Math.cos(f)) : -Math.sign(f) * Math.PI / z;
+  return { angle: -n * TAU / z + d, moving: Math.abs(f) < f0 };
+}

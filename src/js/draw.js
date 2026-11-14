@@ -344,15 +344,16 @@ function drawSide(dpr, s, bh) {
   ctx.fillStyle = C.select; ctx.globalAlpha = 0.08; ctx.fillRect(x0, -(activeLayer * LP + FW + 4), x1 - x0, FW + 8); ctx.globalAlpha = 1;   // the active layer's band
   const order = [...parts].sort((p, q) => p.y - q.y || p.layer - q.layer);
   // shafts first: each runs through the layers it spans, in a bearing at both ends
-  const bearing = (x, z) => { ctx.fillStyle = C.panel; ctx.strokeStyle = C.ink; ctx.lineWidth = 1 / s; for (const sd of [-1, 1]) { ctx.fillRect(x + sd * 4.6 - 1.8, -z - 1.6, 3.6, 3.2); ctx.strokeRect(x + sd * 4.6 - 1.8, -z - 1.6, 3.6, 3.2); } };
+  const bearing = (x, z) => { if (schemeMode) { ctx.strokeStyle = C.ink; ctx.lineWidth = 1.4 / s; ctx.beginPath(); for (const sd of [-1, 1]) { ctx.moveTo(x + sd * 2.6, -z - 2.4); ctx.lineTo(x + sd * 2.6, -z + 2.4); } ctx.stroke(); return; }   // GOST 2.770: a bearing is two dashes along the shaft
+    ctx.fillStyle = C.panel; ctx.strokeStyle = C.ink; ctx.lineWidth = 1 / s; for (const sd of [-1, 1]) { ctx.fillRect(x + sd * 4.6 - 1.8, -z - 1.6, 3.6, 3.2); ctx.strokeRect(x + sd * 4.6 - 1.8, -z - 1.6, 3.6, 3.2); } };
   const covered = p => parts.some(q => isShaft(q) && same(q, p) && covers(q, p.layer));
   for (const g of order) {
     if (isShaft(g)) {
       ctx.globalAlpha = !shown(g) ? 0.18 : onActive(g) ? 1 : 0.5;
       const z0 = g.l0 * LP - 3.5, z1 = g.l1 * LP + FW + 3.5, col = g.motor ? C.brass : collide.has(g.id) ? C.jam : g.w ? C.shaft : C.muted;
-      ctx.fillStyle = col; ctx.fillRect(g.x - 2.4, -z1, 4.8, z1 - z0);
+      const hw = schemeMode ? 0.9 : 2.4; ctx.fillStyle = schemeMode ? C.ink : col; ctx.fillRect(g.x - hw, -z1, 2 * hw, z1 - z0);   // GOST 2.770: a shaft is a line
       const an = angle(g); ctx.strokeStyle = C.paper; ctx.lineWidth = 0.8; ctx.beginPath(); // a keyway line that sweeps across as the shaft turns
-      if (Math.sin(an) > 0) { const kx = g.x + 2.4 * Math.cos(an); ctx.moveTo(kx, -z0); ctx.lineTo(kx, -z1); } ctx.stroke();
+      if (!schemeMode && Math.sin(an) > 0) { const kx = g.x + 2.4 * Math.cos(an); ctx.moveTo(kx, -z0); ctx.lineTo(kx, -z1); } ctx.stroke();
       bearing(g.x, z0 + 1.6); bearing(g.x, z1 - 1.6);
       if (sel.has(g.id)) { ctx.strokeStyle = C.select; ctx.lineWidth = 2 / s; ctx.strokeRect(g.x - 4, -z1 - 1, 8, z1 - z0 + 2); }
     } else if (isVert(g) && !g.mount && !covered(g)) { // a part with no shaft through it turns on its own stub axle

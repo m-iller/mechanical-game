@@ -4,14 +4,18 @@
 const dynCache = { key: '', val: null };
 // the cycle of the mechanism a link belongs to, with the series worth plotting for that link
 function tmmSeries(p) {
-  const cam = p.type === 'tcam' ? p : p.type === 'tfollow' ? camOf(p) : null;
+  if (p.type === 'tgeneva' && camOf(p)) { // a Geneva wheel over one turn of its crank, starting opposite the wheel
+    const c = camOf(p), w = Math.abs(c.w) * RPM, N = 360, h = TAU / N, a = [...Array(N + 2)].map((_, k) => genevaTurn(p.z, -Math.PI + (k - 1) * h + 1e-9).angle);
+    return { geneva: c, w, cyc: { ok: true, N }, at: () => mod(linkTh(c) - Math.atan2(p.y - c.y, p.x - c.x) + Math.PI, TAU) / TAU, series: [
+      { name: 'θ', unit: 'deg', data: a.slice(1, N + 1).map(v => a[1] - v) }, { name: 'ω', unit: 'rad/s', data: a.slice(1, N + 1).map((_, k) => -(a[k + 2] - a[k]) / (2 * h) * w) }] };
+  }
+  const fl = ty(p, 'tfollow', 'tfollowr') ? p : null, cam = p.type === 'tcam' ? p : fl ? camOf(fl) : null;
   if (cam) { // a cam and its follower: the law itself over one turn
-    const f = p.type === 'tfollow' ? p : parts.find(q => q.type === 'tfollow' && camOf(q) === cam), rr = f ? f.rr || 0 : 0, w = Math.abs(cam.w) * RPM, sg = cam.w < 0 ? -1 : 1, N = 180;
-    const d = [...Array(N)].map((_, k) => camS(cam, TAU * k / N));
-    const e = f ? f.e || 0 : 0;
-    return { cam, f, rr, e, w, cyc: { ok: true, N }, chk: camCheck(cam, rr, Math.PI / 6, 720, e), at: () => mod(linkTh(cam) - (f ? f.dir : 0), TAU) / TAU, series: [
+    const f = fl || followerOf(cam), fo = f ? folOf(f) : { kind: 'roller', rr: 0, e: 0, dir: 0 }, w = Math.abs(cam.w) * RPM, sg = cam.w < 0 ? -1 : 1, N = 180;
+    const d = [...Array(N)].map((_, k) => camS(cam, TAU * k / N)), chk = camFollowerCheck(cam, fo, [cam.x, cam.y], N);
+    return { cam, f, fo, rr: fo.rr || 0, e: fo.e || 0, w, cyc: { ok: true, N }, chk, at: () => mod(linkTh(cam) - (fo.kind === 'rock' ? 0 : fo.dir), TAU) / TAU, series: [
       { name: 's', unit: 'mm', data: d.map(x => x[0] * 1e-3) }, { name: 'v', unit: 'm/s', data: d.map(x => x[1] * w * sg * 1e-3) }, { name: 'a', unit: 'm/s2', data: d.map(x => x[2] * w * w * 1e-3) },
-      { name: 'α', unit: 'deg', data: d.map((x, k) => camPressure(cam, rr, TAU * k / N, e)) }] };
+      ...(fo.kind === 'flat' ? [] : [{ name: 'α', unit: 'deg', data: chk.alphas }])] };
   }
   const c = p.type === 'tcrank' ? p : crankOf(p); if (!c || linkFixed(p) && p !== c) return null;
   const cyc = tmmCycle(c); if (!cyc.ok) return { cyc, series: [] };
@@ -34,16 +38,23 @@ const peakOf = a => a.reduce((m, v) => Math.max(m, Math.abs(v)), 0);
 function tmmCycleRows(p) {
   const S = tmmSeries(p), rows = []; if (!S) return rows;
   if (!S.cyc.ok) return [[t('io.cycle'), t('io.noTurn')]];
+  if (S.geneva) {
+    const lam = Math.sin(Math.PI / p.z), wmax = S.w * lam / (1 - lam);
+    return [[t('gv.step'), `${fmtNum(360 / p.z, 4)}°`], [t('gv.share'), `${fmtNum(100 * (p.z - 2) / (2 * p.z), 3)} %`, ex('k', (p.z - 2) / (2 * p.z), '%', 'k = (z − 2) / (2·z)', [['z', p.z, '']], ['ex.geneva'])],
+      [t('io.wmax'), fmtU(wmax, 'rad/s'), ex('ω₂', wmax, 'rad/s', 'ω₂ = ω·λ / (1 − λ),   λ = sin(π/z)', [['ω', S.w, 'rpm'], ['λ', lam, '']], ['ex.geneva'])]];
+  }
   if (S.cam) {
-    const c = S.cam, k = S.chk, D = 180 / Math.PI, wv0 = [['ω', S.w, 'rpm']], R0 = [['r', c.r * 1e-3, 'mm'], ['r_r', S.rr * 1e-3, 'mm']];
-    return [
-      [t('io.lift'), fmtU(c.h * 1e-3, 'mm')],
+    const c = S.cam, k = S.chk, D = 180 / Math.PI, wv0 = [['ω', S.w, 'rpm']], R0 = [['r', c.r * 1e-3, 'mm'], ['r_r', S.rr * 1e-3, 'mm']], kind = S.fo.kind;
+    const rows = [[t('io.lift'), fmtU(c.h * 1e-3, 'mm')],
       [t('io.vmax'), fmtU(k.vmax * S.w * 1e-3, 'm/s'), ex('v', k.vmax * S.w * 1e-3, 'm/s', 'v = (ds/dφ)·ω', [["s′_max", k.vmax * 1e-3, 'mm'], ...wv0], ['ex.camLaw'])],
-      [t('io.amax'), fmtU(k.amax * S.w * S.w * 1e-3, 'm/s2'), ex('a', k.amax * S.w * S.w * 1e-3, 'm/s2', 'a = (d²s/dφ²)·ω²', [["s″_max", k.amax * 1e-3, 'mm'], ...wv0], ['ex.camLaw', 'ex.constW'])],
-      [t('io.alpha'), `${fmtNum(k.alpha * D)}°`, ex('α', k.alpha, 'deg', "tan α = (s′ − e) / (√((r + r_r)² − e²) + s)", [...R0, ['e', S.e * 1e-3, 'mm']], ['ex.camInline', 'ex.camAllow'])],
-      [t('io.rmin'), fmtU(Math.max(0, k.rmin) * 1e-3, 'mm'), ex('r_min', Math.max(0, k.rmin) * 1e-3, 'mm', "r_min = max(|s′| / tan[α] − s) − r_r,   [α] = 30°", [['r_r', S.rr * 1e-3, 'mm']], ['ex.camInline'])],
-      [t('io.rho'), isFinite(k.rho) ? fmtU(k.rho * 1e-3, 'mm') : '∞', ex('ρ_min', k.rho * 1e-3, 'mm', "ρ = (R² + R′²)^1.5 / (R² + 2R′² − R·R″),   R = r + r_r + s", R0, ['ex.camRho'])],
-    ];
+      [t('io.amax'), fmtU(k.amax * S.w * S.w * 1e-3, 'm/s2'), ex('a', k.amax * S.w * S.w * 1e-3, 'm/s2', 'a = (d²s/dφ²)·ω²', [["s″_max", k.amax * 1e-3, 'mm'], ...wv0], ['ex.camLaw', 'ex.constW'])]];
+    if (kind === 'flat') rows.push([t('io.alpha'), '0°', ex('α', 0, 'deg', 'α = 0', [], ['ex.camFlat'])], [t('io.convex'), fmtU(k.rho * 1e-3, 'mm'), ex('ρ_min', k.rho * 1e-3, 'mm', "ρ = r + s + s″ > 0", [['r', c.r * 1e-3, 'mm']], ['ex.camFlat'])]);
+    else {
+      rows.push([t('io.alpha'), `${fmtNum(k.alpha * D)}°`, kind === 'rock' ? ex('α', k.alpha, 'deg', 'α = ∠(normal to the pitch curve, path of the roller)', R0, ['ex.camRock', 'ex.camAllow2']) : ex('α', k.alpha, 'deg', "tan α = (s′ − e) / (√((r + r_r)² − e²) + s)", [...R0, ['e', S.e * 1e-3, 'mm']], ['ex.camInline', 'ex.camAllow'])]);
+      if (kind === 'roller') rows.push([t('io.rmin'), fmtU(Math.max(0, k.rmin) * 1e-3, 'mm'), ex('r_min', Math.max(0, k.rmin) * 1e-3, 'mm', "r_min = max(|s′| / tan[α] − s) − r_r,   [α] = 30°", [['r_r', S.rr * 1e-3, 'mm']], ['ex.camInline'])]);
+      rows.push([t('io.rho'), isFinite(k.rho) ? fmtU(k.rho * 1e-3, 'mm') : '∞', ex('ρ_min', k.rho * 1e-3, 'mm', kind === 'rock' ? 'ρ: circle through three neighbouring points of the pitch curve' : "ρ = (R² + R′²)^1.5 / (R² + 2R′² − R·R″),   R = r + r_r + s", R0, ['ex.camRho'])]);
+    }
+    return rows;
   }
   const w = S.w, wv = [['ω', w, 'rpm']];
   if (SLIDES.includes(p.type)) {
@@ -89,7 +100,9 @@ function tmmGrashof(c) {
 function tmmFields(p) {
   if (p.type === 'tcam') { const P = { ...CAM_DEF, ...p }, ang = (key, k) => slider(t(key), 5, 350, 1, () => P[k], v => { p[k] = v; commit(); }, '°');
     return [labelled(t('cam.law'), choice(['cyc', 'harm', 'par', 'lin'].map(k => [k, t('cam.' + k)]), P.law, v => { p.law = v; commit(); })), ang('cam.b1', 'b1'), ang('cam.bd', 'bd'), ang('cam.b2', 'b2')]; }
-  if (p.type === 'tfollow') return [slider(t('cam.e'), -60, 60, 0.5, () => p.e || 0, v => { p.e = v; commit(); }, unitSym('mm'))];
+  if (p.type === 'tfollow') return [labelled(t('cam.face'), choice([['roller', t('cam.roller')], ['flat', t('cam.flat')]], p.ft || 'roller', v => { p.ft = v; commit(); })), ...(p.ft === 'flat' ? [] : [slider(t('cam.e'), -60, 60, 0.5, () => p.e || 0, v => { p.e = v; commit(); }, unitSym('mm'))])];
+  if (p.type === 'tratchet') return [rowOf(btn(t('btn.reverse'), () => { p.sg = -(p.sg || 1); commit(); }))];
+  if (ty(p, 'tfollowr', 'tgeneva')) return [];
   const out = [], num = (key, k, lo, hi, step, unit, def = 0) => slider(t(key), lo, hi, step, () => p[k] == null ? def : p[k], v => { p[k] = v; commit(); }, unit);
   if (SLIDES.includes(p.type)) out.push(num('link.F', 'F', 0, 1e6, 1, unitSym('N')), slider(t('link.fw'), 1, 100, 1, () => Math.round((p.fw == null ? 1 : p.fw) * 100), v => { p.fw = v / 100; commit(); }, '%'));
   if (!ty(p, 'pivot', 'guide')) out.push(num('link.m', 'm', 0, 10000, 0.01, unitSym('kg')));

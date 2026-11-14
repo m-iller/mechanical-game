@@ -35,6 +35,10 @@ Gear Bench is growing from a drive sandbox into a rough-figures tool for mechani
 - **Mechanisms**: plans of velocities and accelerations for the current position, dead points, pressure angle of a slider and transmission angle of a rocker with warnings.
 - **Hydraulics**: accumulator, and a reducer loss where pipes of different bore meet.
 - Reactions in a link's pairs in the panel; offset cam follower; pipes and wires can be laid in the side view; a cylinder can carry the weight of the links (virtual work); the gas turbine's flow can follow the shaft speed.
+- **Geneva wheel and ratchet wheel as links**: the wheel is driven by the pin of a crank, the ratchet by a pawl on any swinging link. Templates "Geneva drive from links" and "Ratchet feed from links".
+- **Flat-faced and swinging cam followers**, with the cam surface, pressure angle and curvature worked out for each. Template "Cam with a swinging follower".
+- **Pipe corners can be dragged** in the top view; dragging a straight run of a picked pipe makes a corner, and a corner put back in line goes away.
+- Side view in scheme mode draws shafts as lines and bearings as two dashes.
 
 ### Changed
 - Scenes are saved in format v5. Scenes from 2.x and earlier 3.0 builds open and are migrated on load.

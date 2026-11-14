@@ -54,6 +54,31 @@ await dragTo(await sidePos(60, 0, 4), await sidePos(60, 2, 4));
 moved = await page.evaluate(() => { const s = parts[1]; return [s.l0, s.l1]; });
 if (moved.join() !== '0,2') fail('stretching a shaft in the side view gave span ' + moved);
 
+// mechanism links: dragging a rod's free end onto a slider makes the pair, and the chain then runs
+await page.evaluate(() => {
+  resetScene(1); viewMode = 'top';
+  addPart('tcrank', { x: 0, y: 0, len: 20, dir: Math.PI / 2, motor: { rpm: 30, tq: 2 } }); addPart('trod', { x: 0, y: 20, len: 60, dir: 0 });
+  addPart('guide', { x: 70, y: 0, len: 120, dir: 0 }); addPart('tslider', { x: 75, y: 0, dir: 0 });
+  tmmAttach([2, 4]); solve(); fit(); setActive(0); running = false; ui();
+});
+const topPos = (x, y) => page.evaluate(([x, y]) => { const r = cv.getBoundingClientRect(); return { x: r.left + W / 2 + (x - view.cx) * view.scale, y: r.top + topMid() + (y - view.cy) * view.scale }; }, [x, y]);
+let pr = await page.evaluate(() => pairs.map(q => q.type).sort().join());
+if (pr !== 'P,R') fail('pairs before the drag: ' + pr);
+await dragTo(await topPos(60, 20), await topPos(75.5, 0.5));
+pr = await page.evaluate(() => [pairs.map(q => q.type).sort().join(), tmmInfo.groups.map(g => g.W).join(), tmmInfo.ok, Math.round(parts[1].len * 10) / 10]);
+if (pr[0] !== 'P,R,R' || pr[1] !== '1' || !pr[2]) fail('dropping a rod end on a slider gave ' + JSON.stringify(pr));
+await page.evaluate(() => { running = true; }); await page.waitForTimeout(500);
+const run = await page.evaluate(() => [tmmStuck, Math.abs(parts[3].y) < 1e-6, parts[3].x]);
+if (run[0] || !run[1]) fail('the slider-crank does not run: ' + JSON.stringify(run));
+await page.screenshot({ path: '/tmp/tmm1.png' });
+// pulling the slider off the guide breaks its pairs
+await page.evaluate(() => { running = false; });
+const sl = await page.evaluate(() => ({ x: parts[3].x, y: parts[3].y }));
+await dragTo(await topPos(sl.x + 5, sl.y + 2.5), await topPos(sl.x + 5, sl.y + 32));
+pr = await page.evaluate(() => pairs.map(q => q.type).sort().join());
+if (pr !== 'R') fail('pairs after pulling the slider away: ' + pr);
+await page.evaluate(() => { viewMode = 'both'; running = true; });
+
 // power balance: the conveyor demo runs, shows explained figures, and the "where from" box opens
 await page.evaluate(() => { resetScene(5); const m = insertTemplate('conveyor', 0, 0); solve(); fit(); pick([m[m.length - 1].id]); });
 await page.waitForTimeout(60);

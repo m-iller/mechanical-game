@@ -90,7 +90,7 @@ function solveKin() {
   let hit = null;
   for (let i = 0; i < parts.length; i++) for (let j = i + 1; j < parts.length; j++) {
     let a = parts[i], b = parts[j];
-    if (a.layer !== b.layer || isShaft(a) || isShaft(b) || a.type === 'hshaft' || b.type === 'hshaft') continue;
+    if (a.layer !== b.layer || isShaft(a) || isShaft(b) || a.type === 'hshaft' || b.type === 'hshaft' || isLink(a) || isLink(b)) continue;
     if (b.type === 'rack' || b.type === 'worm' || b.type === 'hbevel' || b.type === 'ring') [a, b] = [b, a];
     if (a.type === 'rack') {
       if (kind(b) !== 'gear' || b.mount) continue;

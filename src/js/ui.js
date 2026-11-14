@@ -13,6 +13,7 @@ const fmtT = v => v >= 100 ? v.toFixed(0) : v >= 10 ? v.toFixed(1) : v.toFixed(2
 const mm = v => `${+v.toFixed(2)} ${t('u.mm')}`;
 const rpmText = w => !w ? t('s.stopped') : `${fmt(Math.abs(w), Math.abs(w) < 10 ? 2 : 1)} ${t('u.rpm')} ${w > 0 ? t('s.cw') : t('s.ccw')}`;
 const sizeText = p => {
+  if (isLink(p)) return p.len != null ? `l${+p.len.toFixed(1)}` : '';
   switch (p.type) {
     case 'worm': return `z${p.zw}`;
     case 'emotor': return isDyn(p.motor) ? fmtU(p.motor.P, 'power') : '';
@@ -37,7 +38,14 @@ const tqText = (p, o) => { const v = torqueAt(p, o); return v == null ? '–' : 
 const linksOf = p => links.filter(L => L.ids.includes(p.id));
 
 /* Everything worth knowing about one part: its diameters and how it is built, then what it is doing. */
+// structure of the mechanism a link belongs to
+function linkRows(p) {
+  const g = tmmInfo.of.get(p.id); if (!g || !(g.p5 + g.pf)) return [];
+  return [[t('io.links'), `${g.n}`], [t('io.p5'), `${g.p5}`],
+    [t('io.W'), `${g.W}`, ex('W', g.W, '', 'W = 3·n − 2·p₅ − p₄', [['n', g.n, ''], ['p₅', g.p5, ''], ['p₄', 0, '']], ['ex.cheb'])]];
+}
 function specRows(p) {
+  if (isLink(p)) return p.type === 'tcrank' ? [...linkRows(p), [t('sp.n'), rpmText(p.w)]] : linkRows(p);
   const r = [], add = (k, v) => r.push([t(k), v]), z = p.z, d = pitchD(p), o = outOf(p);
   const mates = meshes.filter(m => m.a === p || m.b === p);
   switch (p.type) {
@@ -99,7 +107,7 @@ function ioRows() {
   return rows;
 }
 // rows are [label, value] or [label, value, explanation]; a value with an explanation opens the "where from" box when clicked
-let why = null, whySeen = false;
+let why = null, whySeen = false, tmmStuck = false;
 const fillDl = (dl, rows) => {
   dl.textContent = '';
   for (const [k, v, e] of rows) {
@@ -240,7 +248,7 @@ function renderLayers() {
 }
 function renderSel() {
   const ps = selParts(), p = ps.length === 1 ? ps[0] : null, body = $('sel-body');
-  const key = JSON.stringify([lang, layerCount, linkDraft && [linkDraft.kind, linkDraft.ids], outId, links.map(L => [L.ids, L.crossed]), ps.map(q => [q.id, q.type, q.layer, q.on, q.held, q.loose, !!q.motor, q.load && q.load.kind, q.mount && q.mount.c, q.l0, q.l1])]);
+  const key = JSON.stringify([lang, layerCount, linkDraft && [linkDraft.kind, linkDraft.ids], outId, links.map(L => [L.ids, L.crossed]), ps.map(q => [q.id, q.type, q.layer, q.on, q.held, q.loose, !!q.motor, q.load && q.load.kind, q.mount && q.mount.c, q.l0, q.l1]), pairs.map(q => [q.id, q.type])]);
   $('sel-name').textContent = p ? `${p.name} · ${typeName(p)}` : ps.length ? t('sel.many', { n: ps.length }) : t('sel.none');
   if (key !== selKey) {
     selKey = key; selRefresh = []; body.textContent = '';
@@ -265,9 +273,9 @@ function renderSel() {
       else body.append(labelled(t('sel.layer'), layerSeg(p.layer, l => { setLayer(p, l); commit(); })));
       const tg = [];
       if (T0.tog) tg.push(btn(t(`tog.${p.type}.${p.on ? 1 : 0}`), () => { p.on = !p.on; commit(); }, p.on));
-      if (!isLin(p) && !ty(p, 'emotor', 'machine')) tg.push(btn(t('tog.motor'), () => { if (p.motor) delete p.motor; else { p.motor = { kind: 'speed', rpm: 60, tq: 2 }; delete p.load; } commit(); }, !!p.motor));
-      if (!isLin(p) && !isShaft(p) && !ty(p, 'emotor', 'machine', 'brake') && !p.motor) tg.push(btn(t('tog.load'), () => { if (p.load) delete p.load; else p.load = { kind: 'const', tq: 1, n: 1000, eta: 1 }; commit(); }, !!p.load));
-      if (!isLin(p) && p.type !== 'brake') tg.push(btn(t('tog.held'), () => { p.held = !p.held; commit(); }, !!p.held));
+      if (!isLin(p) && !ty(p, 'emotor', 'machine') && (!isLink(p) || p.type === 'tcrank')) tg.push(btn(t('tog.motor'), () => { if (p.motor) delete p.motor; else { p.motor = { kind: 'speed', rpm: 60, tq: 2 }; delete p.load; } commit(); }, !!p.motor));
+      if (!isLin(p) && !isShaft(p) && !isLink(p) && !ty(p, 'emotor', 'machine', 'brake') && !p.motor) tg.push(btn(t('tog.load'), () => { if (p.load) delete p.load; else p.load = { kind: 'const', tq: 1, n: 1000, eta: 1 }; commit(); }, !!p.load));
+      if (!isLin(p) && !isLink(p) && p.type !== 'brake') tg.push(btn(t('tog.held'), () => { p.held = !p.held; commit(); }, !!p.held));
       if (isVert(p) && !isShaft(p) && !ty(p, 'clutch', 'diff')) tg.push(btn(t('tog.loose'), () => { p.loose = !p.loose; commit(); }, !!p.loose));
       if (p.mount) tg.push(btn(t('tog.unmount'), () => { delete p.mount; commit(); }));
       if (tg.length) { const r = rowOf(...tg); r.classList.add('togs'); body.append(r); }
@@ -281,6 +289,16 @@ function renderSel() {
           box.append(r);
         }
         body.append(labelled(t(belt ? 'link.belts' : 'link.chains'), box), rowOf(btn(t(belt ? 'link.belt' : 'link.chain'), () => { linkDraft = { kind: belt ? 'belt' : 'chain', ids: [p.id] }; ui(); })));
+      }
+      if (isLink(p)) { // the pairs this link is in: look, change the kind, or take apart
+        const box = el('div', null, { className: 'links' }), mine = pairsOf(p);
+        for (const q of mine) {
+          const o = byId(q.a === p.id ? q.b : q.a), r = el('div'); r.append(el('span', o ? o.name : '?'));
+          if (q.type === 'P') r.append(el('span', t('pair.P')));
+          else r.append(choice([['R', t('pair.R')], ['F', t('pair.F')]], q.type, v => { q.type = v; q.turn = v === 'F' ? wrap(linkTh(byId(q.b)) - linkTh(byId(q.a))) : 0; commit(); }));
+          r.append(btn('×', () => { pairs = pairs.filter(x => x !== q); commit(); })); box.append(r);
+        }
+        body.append(mine.length ? labelled(t('sel.pairs'), box) : el('p', t('sel.noPairs'), { className: 'hint' }));
       }
       if (p.load) body.append(...loadFields(p));
       const dl = el('dl'); dl.dataset.why = p.id + ':'; body.append(dl); selRefresh.push(() => fillDl(dl, [...(p.load ? loadRows(p) : []), ...specRows(p)]));
@@ -297,7 +315,7 @@ function ui() {
   if (why && !whySeen) why = null;   // the figure it explained is gone
   renderWhy();
   const moving = parts.filter(p => !isShaft(p) && isDriven(p)).length, total = parts.filter(p => !isShaft(p)).length;
-  const err = (warnings.find(w => w.level === 'error') || {}).text;
+  const err = (warnings.find(w => w.level === 'error') || {}).text || (tmmStuck ? t('w.linkStuck') : '');
   $('status').className = 'status' + (linkDraft ? '' : lockMsg || err ? ' locked' : !running ? ' paused' : '');
   $('status-text').textContent = linkDraft ? t('status.link') : !total ? t('status.empty') : lockMsg ? lockMsg : err ? err : hintMsg ? hintMsg : !running ? t('status.paused') : t('status.running', { n: moving, m: total });
   const nt = TYPES[$('new-type').value], nz = $('new-z'); $('new-size-row').hidden = !nt.key;
@@ -362,6 +380,7 @@ function rotateSel(deg) { // one part turns in place; several turn together abou
 }
 // after a size change, slide the part so it still touches the neighbour it was meshing with
 function keepContact(p) {
+  if (isLink(p)) return;
   const m = meshes.find(q => (q.a === p || q.b === p) && (q.k === 'gear' || q.k === 'fric') && !p.mount); if (!m) return;
   const o = m.a === p ? m.b : m.a; if (o.mount) return;
   const dx = p.x - o.x, dy = p.y - o.y, d = Math.hypot(dx, dy) || 1, s = RO(p) + RO(o); p.x = o.x + dx / d * s; p.y = o.y + dy / d * s;
@@ -432,6 +451,7 @@ function snap(g, x, y) {
 const pts = new Map(); let drag = null, pan = null, pinch = null, holdTimer = null;
 const pos = e => { const r = cv.getBoundingClientRect(); return { x: e.clientX - r.left, y: e.clientY - r.top }; };
 function hitTop(g, w) {
+  if (isLink(g)) return tmmHit(g, w, Math.max(3.2, 9 / view.scale)) != null;
   const b = boxOf(g);
   if (b) { const u = unit(g.dir), dx = w.x - g.x, dy = w.y - g.y, lx = dx * u[0] + dy * u[1], ly = -dx * u[1] + dy * u[0]; return g.type === 'rack' ? Math.abs(lx) <= b[0] && ly >= -1.25 * M - RB - 1 && ly <= M + 1 : g.type === 'hbevel' ? lx > -9 && lx < 14 && Math.abs(ly) <= b[1] : Math.abs(lx) <= b[0] && Math.abs(ly) <= b[1] + 1; }
   const d = Math.hypot(w.x - g.x, w.y - g.y);
@@ -450,7 +470,9 @@ function hit(p) {
       || pool.find(g => isShaft(g) && Math.abs(x - g.x) < 4 && z > g.l0 * LP - 4 && z < g.l1 * LP + FW + 4);
   }
   const w = toWorld(p.x, p.y), vis = parts.filter(canPick);   // only the active layer takes the pointer
-  return vis.find(g => isShaft(g) && Math.hypot(w.x - g.x, w.y - g.y) < 3.2) || vis.filter(g => !isShaft(g)).sort((a, b) => b.layer - a.layer).find(g => hitTop(g, w));
+  // among links, a joint under the pointer wins over a slider, a slider over a bar, and a guide comes last
+  const rank = g => { if (!isLink(g)) return 2; const h = tmmHit(g, w, Math.max(3.2, 9 / view.scale)); return typeof h === 'number' ? 0 : SLIDES.includes(g.type) ? 1 : g.type === 'guide' ? 3 : 2; };
+  return vis.find(g => isShaft(g) && Math.hypot(w.x - g.x, w.y - g.y) < 3.2) || vis.filter(g => !isShaft(g)).sort((a, b) => b.layer - a.layer || rank(a) - rank(b)).find(g => hitTop(g, w));
 }
 cv.addEventListener('pointerdown', e => {
   cv.setPointerCapture(e.pointerId); const p = pos(e); pts.set(e.pointerId, p); clearTimeout(holdTimer);
@@ -478,6 +500,11 @@ cv.addEventListener('pointerdown', e => {
     for (const q of [...group]) if (isShaft(q)) for (const c of onShaft(q)) group.add(c);   // a shaft takes what is keyed to it along
     if ([...group].some(q => !isShaft(q) && lockedLayers.has(q.layer))) return;              // unless a locked layer holds one of them
     drag = { g, dx: w.x - g.x, dy: w.y - g.y, others: [...group].filter(q => q !== g && !q.mount).map(q => ({ q, ox: q.x - g.x, oy: q.y - g.y })), sx: p.x, sy: p.y, moved: false };
+    if (isLink(g)) { // which piece was taken: the far joint of a bar stretches and turns it, its first joint moves that end, anything else moves the link
+      const piece = tmmHit(g, w, Math.max(3.2, 9 / view.scale)), bar = BAR.includes(g.type), k = bar && piece === 1 ? 1 : bar && piece === 0 && g.type !== 'tcrank' ? 0 : null;
+      if (k != null) drag.others = [];
+      drag.link = { k, far: bar ? jointPos(g, 1) : null, ids: [g.id, ...drag.others.map(o => o.q.id)] };
+    }
     cv.classList.add('dragging');
   } else {
     if (g) pick([g.id]);
@@ -499,6 +526,7 @@ cv.addEventListener('pointermove', e => {
     const g = drag.g, w = toWorld(p.x, p.y);
     if (!drag.moved) { drag.moved = true; freeze(); if (g.mount) delete g.mount; }
     if (drag.side) { sideDrag(p); changed(); return; }
+    if (drag.link) { linkDrag(w); changed(); return; }
     const s = drag.others.length ? { x: w.x - drag.dx, y: w.y - drag.dy } : snap(g, w.x - drag.dx, w.y - drag.dy);
     g.x = s.x; g.y = s.y; if (s.dir != null) g.dir = s.dir; drag.mount = s.mount || null;
     for (const o of drag.others) { o.q.x = g.x + o.ox; o.q.y = g.y + o.oy; }
@@ -508,6 +536,18 @@ cv.addEventListener('pointermove', e => {
     if (pan.moved) { view.cx = pan.cx - (p.x - pan.sx) / view.scale; if (!pan.side) view.cy = pan.cy - (p.y - pan.sy) / view.scale; }
   }
 });
+/* Dragging a link in the top view. On the first move it lets go of the pairs that would hold it back;
+   when it is dropped, tmmAttach() makes the pairs for wherever its joints have landed. */
+function linkDrag(w) {
+  const d = drag, g = d.g, L = d.link, skip = new Set(L.ids), near = Math.max(3, 9 / view.scale);
+  if (!L.loose) { L.loose = true; tmmDetach(L.ids, L.k); }
+  if (L.k === 1) { const q = tmmSnap(g, w.x, w.y, 1, skip, near), [lo, hi] = T(g).lim; g.len = Math.max(lo, Math.min(hi, +Math.hypot(q.x - g.x, q.y - g.y).toFixed(2))); g.dir = Math.atan2(q.y - g.y, q.x - g.x); return; }
+  if (L.k === 0) { const q = tmmSnap(g, w.x, w.y, 0, skip, near), [lo, hi] = T(g).lim; g.x = q.x; g.y = q.y; g.len = Math.max(lo, Math.min(hi, +Math.hypot(L.far.x - q.x, L.far.y - q.y).toFixed(2))); g.dir = Math.atan2(L.far.y - q.y, L.far.x - q.x); return; }
+  let q = { x: w.x - d.dx, y: w.y - d.dy };
+  if (g.type === 'tcrank' && !d.others.length) { const a = snap(g, q.x, q.y); if (a.x !== q.x || a.y !== q.y) q = a; else q = tmmSnap(g, q.x, q.y, null, skip, near); }   // a crank goes onto a shaft first
+  else q = tmmSnap(g, q.x, q.y, null, skip, near);
+  g.x = q.x; g.y = q.y; for (const o of d.others) { o.q.x = g.x + o.ox; o.q.y = g.y + o.oy; }
+}
 // Dragging in the side view (the x–z projection of the same model): x follows the pointer, the layer follows its height.
 function sideDrag(p) {
   const d = drag, g = d.g, x = (p.x - W / 2) / view.scale + view.cx, z = (baseY() - p.y) / view.scale;
@@ -534,7 +574,7 @@ const up = e => {
     const inside = parts.filter(g => canPick(g) && g.x >= a.x && g.x <= b.x && g.y >= a.y && g.y <= b.y).map(g => g.id);
     boxSel = null; cv.classList.remove('boxing'); pick(inside, e.shiftKey);
   } else if (pan && !pan.moved && !pan.onPart && sel.size) pick([]);
-  if (drag && drag.moved) { const g = drag.g; if (drag.mount) g.mount = drag.mount; else if (!drag.others.length) autoShaft(g); commit(); }
+  if (drag && drag.moved) { const g = drag.g; if (drag.link) tmmAttach(drag.link.ids); if (drag.mount) g.mount = drag.mount; else if (!drag.others.length) autoShaft(g); commit(); }
   drag = pan = null; if (pts.size < 2) pinch = null; cv.classList.remove('dragging');
 };
 cv.addEventListener('pointerup', up); cv.addEventListener('pointercancel', up);
@@ -551,7 +591,7 @@ $('add').onclick = () => {
   const type = $('new-type').value, nt = TYPES[type];
   const g = addPart(type, { ...(nt.key ? { [nt.key]: +$('new-z').value } : {}), x: 0, y: 0, layer: activeLayer, ...(type === 'shaft' ? { l0: activeLayer, l1: Math.min(layerCount - 1, activeLayer + 1) } : {}) });
   Object.assign(g, freeSpot(tipR(g) + reach(g)));
-  if (!parts.some(p => p.motor) && !isLin(g) && !ty(g, 'carrier', 'brake', 'machine')) g.motor = { kind: 'speed', rpm: 60, tq: 2 };   // the first part on an empty bench gets the motor
+  if (!parts.some(p => p.motor) && !isLin(g) && !isLink(g) && !ty(g, 'carrier', 'brake', 'machine')) g.motor = { kind: 'speed', rpm: 60, tq: 2 };   // the first part on an empty bench gets the motor
   sel = new Set([g.id]); commit();
 };
 $('tpl-add').onclick = () => { const c = toWorld(W / 2, topMid()); freeze(); const made = insertTemplate($('tpl').value, c.x, c.y); sel = new Set(made.map(p => p.id)); commit(); fit(); };
@@ -592,7 +632,11 @@ function start(d) {
   let last = performance.now();
   const frame = ts => {
     const dt = Math.min(0.05, Math.max(0, (ts - last) / 1000)); last = ts;
-    if (running && !lockMsg) { clock += RPM * dt; place(); }
+    if (running && !lockMsg) { // a mechanism that cannot follow its crank holds the whole bench at that instant
+      const c0 = clock; clock += RPM * dt; place();
+      const ok = tmmStep(); if (!ok) { clock = c0; place(); }
+      if (ok === tmmStuck) { tmmStuck = !ok; ui(); }
+    }
     draw(ts); requestAnimationFrame(frame);
   };
   requestAnimationFrame(frame);

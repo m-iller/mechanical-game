@@ -110,6 +110,7 @@ function drawTop(dpr, s, bh) {
   const detail = (x, y, ang, path, ink) => { ctx.save(); ctx.translate(x, y); ctx.rotate(ang); ctx.strokeStyle = ink; ctx.lineWidth = 0.8 / s; ctx.globalAlpha = 0.6; ctx.stroke(path); ctx.restore(); };
   const dot = (x, y, r, f) => { ctx.fillStyle = f; ctx.beginPath(); ctx.arc(x, y, r, 0, TAU); ctx.fill(); };
   const part = g => {
+    if (isLink(g)) { tmmDraw(g, s); return; }       // links of mechanisms are always scheme symbols
     if (schemeMode && schemePart(g, s)) return;   // kinematic-scheme symbol instead of the drawn shape
     const bad = collide.has(g.id), ink = bad ? C.jam : C.ink, lw = (bad ? 2 : 1.2) / s, fill = fillOf(g), sh = g.layer > 0, main = g.motor ? C.brass : fill, an = angle(g);
     // draw in the part's own frame: origin at its centre, x axis along its direction
@@ -283,6 +284,7 @@ function drawTop(dpr, s, bh) {
   for (const g of selParts()) {
     ctx.strokeStyle = C.select; ctx.lineWidth = 2 / s;
     const b = boxOf(g);
+    if (isLink(g)) { tmmOutline(g); continue; }
     if (b) { ctx.save(); ctx.translate(g.x, g.y); ctx.rotate(g.dir); const y0 = g.type === 'rack' ? -1.25 * M - RB - 2 : -b[1] - 2, hh = g.type === 'rack' ? RB + 2.25 * M + 4 : 2 * b[1] + 4, x0 = g.type === 'hbevel' ? -9 : -b[0] - 2, ww = g.type === 'hbevel' ? 24 : 2 * b[0] + 4; ctx.strokeRect(x0, y0, ww, hh); ctx.restore(); }
     else { ctx.beginPath(); ctx.arc(g.x, g.y, tipR(g) + 1.6, 0, TAU); ctx.stroke(); }
   }
@@ -358,6 +360,12 @@ function drawSide(dpr, s, bh) {
   for (const g of order) {
     if (isShaft(g)) continue;
     dim(g.layer);
+    if (isLink(g)) { // a link is a thin plate over the span of its joints
+      const xs = g.type === 'guide' ? [g.x - Math.abs(Math.cos(g.dir)) * g.len / 2, g.x + Math.abs(Math.cos(g.dir)) * g.len / 2] : jointsOf(g).map((_, k) => jointPos(g, k).x), lo = Math.min(...xs), hi = Math.max(...xs), hw = Math.max(SLIDES.includes(g.type) ? 8 : 2.5, (hi - lo) / 2);
+      rect((lo + hi) / 2, hw, g.layer * LP + 3, g.layer * LP + FW - 3, g.type === 'pivot' || g.type === 'guide' ? C.muted : fillOf(g), C.ink);
+      if (sel.has(g.id)) { ctx.strokeStyle = C.select; ctx.lineWidth = 2 / s; ctx.strokeRect((lo + hi) / 2 - hw - 1.5, -(g.layer * LP + FW - 1.5), 2 * hw + 3, FW - 3); }
+      continue;
+    }
     const zb = g.layer * LP, bad = collide.has(g.id), ink = bad ? C.jam : C.ink, fill = fillOf(g), main = g.motor ? C.brass : fill, an = angle(g);
     const c = Math.cos(g.dir || 0), ac = Math.abs(c), as = Math.abs(Math.sin(g.dir || 0)), zc = zb + FW / 2;
     switch (g.type) {

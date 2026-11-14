@@ -16,7 +16,7 @@ Gear Bench is growing from a drive sandbox into a rough-figures tool for mechani
 - Templates "Motor and fan" and "Motor, belt, planetary, chain, conveyor".
 - Calculation core without DOM in `src/js/core/` (units, explanations, warnings, energy ports, scene migrations, load characteristics) and tests: `npm test`.
 
-- Core for planar linkages (not yet in the interface): Chebyshev's mobility formula, Grashof's rule, positions, speeds and accelerations for mechanisms with revolute and prismatic pairs.
+- **Mechanisms from separate links**: frame hinge and guide, crank, connecting rod, rocker, slider, slotted link, sliding block, link with several joints. Kinematic pairs appear when a joint is dropped on a joint or a slider on a guide, and go when the link is pulled away; a pair can be made fixed or removed in the panel. The crank sits on a shaft or has its own motor. Mobility by Chebyshev's formula with warnings for an under- or over-constrained chain. Templates "Slider-crank from links" and "Four-bar linkage".
 
 ### Changed
 - Scenes are saved in format v3. Scenes from 2.x open and are migrated on load.

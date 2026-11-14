@@ -29,6 +29,7 @@ function solve() {
     for (const p of dyn) if (p.motor.follow) p.motor.rpm = p.w;
   }
   power = flows(ops);
+  tmmStep(); tmmAnalyze();
   warnings = runChecks({ parts, power });
 }
 

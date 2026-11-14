@@ -1,10 +1,11 @@
 /* Gear Bench core — scene format versions. A saved scene carries v; MIGRATIONS[n] turns version n into n + 1.
    Loading runs the chain, so every older file still opens. No DOM here.
      v2  Gear Bench 2.x: layerCount + hidden[], motor { rpm, tq }
-     v3  layers [{ name, visible, locked }], motor.kind, loads on parts */
+     v3  layers [{ name, visible, locked }], motor.kind, loads on parts
+     v4  links of mechanisms as parts, pairs [] between them */
 'use strict';
 
-const SCENE_V = 3;
+const SCENE_V = 4;
 const MIGRATIONS = {
   2(d) {
     const n = Math.max(1, d.layerCount || 1), hidden = new Set(d.hidden || []), layers = [];
@@ -13,6 +14,7 @@ const MIGRATIONS = {
     const { layerCount, hidden: h, ...rest } = d;
     return { ...rest, v: 3, layers, parts, scheme: false };   // a 2.x bench keeps the drawn look it was saved with
   },
+  3(d) { return { ...d, v: 4, pairs: [] }; },
 };
 function migrate(d) {
   if (!d || !Array.isArray(d.parts)) return null;

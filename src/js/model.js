@@ -40,20 +40,32 @@ const TYPES = {
   flywheel: { pre: 'F',  grp: 'shafts', key: 'd',   lim: [16, 800, 1], def: 70 },
   emotor:   { pre: 'M',  grp: 'io',     key: 'd',   lim: [16, 400, 1], def: 44 },   // electric motor: always a source
   machine:  { pre: 'X',  grp: 'io',     key: 'd',   lim: [16, 400, 1], def: 50 },   // black-box machine: always a load
+  /* links of a mechanism (theory of mechanisms and machines). x, y is the first joint, dir the link's angle.
+     Pairs between them are made when joints are dropped together: see domains/tmm/scene.js. */
+  pivot:    { pre: 'O',  grp: 'tmm' },                                                            // frame: a fixed hinge
+  guide:    { pre: 'N',  grp: 'tmm',    key: 'len', lim: [10, 2000, 1], def: 120, dir: 1 },         // frame: a fixed guide
+  tcrank:   { pre: 'L',  grp: 'tmm',    key: 'len', lim: [2, 1000, 0.5], def: 20, dir: 1 },         // turns about its first joint; keyed to a shaft there, or its own motor
+  trod:     { pre: 'L',  grp: 'tmm',    key: 'len', lim: [2, 2000, 0.5], def: 70, dir: 1 },
+  trocker:  { pre: 'L',  grp: 'tmm',    key: 'len', lim: [2, 2000, 0.5], def: 50, dir: 1 },
+  tslider:  { pre: 'L',  grp: 'tmm',    dir: 1 },
+  tcoul:    { pre: 'L',  grp: 'tmm',    key: 'len', lim: [5, 2000, 0.5], def: 90, dir: 1 },         // slotted link: a stone slides along it
+  tstone:   { pre: 'L',  grp: 'tmm',    dir: 1 },
+  tplate:   { pre: 'L',  grp: 'tmm',    key: 'r',   lim: [4, 500, 1], def: 20, key2: 'n', lim2: [3, 8], dir: 1 },   // rigid link with n joints
   crank:    { pre: 'K',  grp: 'mech',   key: 'r',   lim: [3, 150, 1], def: 14, key2: 'l', lim2: [10, 600], dir: 1 },
   cam:      { pre: 'CM', grp: 'mech',   key: 'h',   lim: [1, 40, 1], def: 8,  dir: 1 },
   geneva:   { pre: 'GV', grp: 'mech',   key: 'z',   lim: [4, 24, 1], def: 4,  dir: 1 },
   ratchet:  { pre: 'RT', grp: 'mech',   key: 'z',   lim: [6, 200, 1], def: 16, tog: 1 },
 };
-const GROUPS = ['io', 'gears', 'flex', 'shafts', 'mech'];
+const GROUPS = ['io', 'gears', 'flex', 'shafts', 'tmm', 'mech'];
 // a small catalogue motor (0.37 kW, 4 poles) and a machine that takes a constant 2 N·m
-const DEFAULTS = { emotor: { motor: { kind: 'induction', P: 370, n: 1320, ks: 2.2, km: 2.2, rpm: 1320, tq: 2.7 } }, machine: { load: { kind: 'const', tq: 2, n: 1000, eta: 0.9 } }, carrier: { n: 3 }, crank: { l: 40 }, ring: { loose: true }, clutch: { on: true }, brake: { on: true }, ratchet: { on: false } };
+const DEFAULTS = { emotor: { motor: { kind: 'induction', P: 370, n: 1320, ks: 2.2, km: 2.2, rpm: 1320, tq: 2.7 } }, machine: { load: { kind: 'const', tq: 2, n: 1000, eta: 0.9 } }, carrier: { n: 3 }, tplate: { n: 3 }, crank: { l: 40 }, ring: { loose: true }, clutch: { on: true }, brake: { on: true }, ratchet: { on: false } };
 const PROPS = ['z', 'zw', 'd', 'r', 'n', 'l', 'h', 'len', 'l0', 'l1', 'dir', 'on', 'loose', 'held', 'label'];
 const MOTOR_KEYS = ['kind', 'rpm', 'tq', 'P', 'n', 'ks', 'km'], LOAD_KEYS = ['kind', 'tq', 'n', 'eta', 'table'];
 const pickKeys = (o, keys) => { const r = {}; for (const k of keys) if (o[k] != null) r[k] = Array.isArray(o[k]) ? o[k].map(x => Array.isArray(x) ? x.slice() : x) : o[k]; return r; };
 
 /* ---------- scene state ---------- */
 let parts = [], links = [], nextId = 1;
+let pairs = [];                              // kinematic pairs between links: { id, type: 'R' | 'P' | 'F', a, ja, b, jb, turn }
 let layerCount = 3, activeLayer = 0, hiddenLayers = new Set();
 let lockedLayers = new Set(), layerNames = [], soloActive = false;   // soloActive: show the active layer alone
 let sel = new Set(), outId = null, linkDraft = null;
@@ -67,7 +79,8 @@ const ty = (p, ...names) => names.includes(p.type);
 const T = p => TYPES[p.type];
 const isShaft = p => p.type === 'shaft';
 const isHz = p => !!T(p).hz, isLin = p => !!T(p).lin;
-const isVert = p => !isHz(p) && !isLin(p);          // turns about a vertical axis
+const isLink = p => T(p).grp === 'tmm';              // a link of a mechanism
+const isVert = p => !isHz(p) && !isLin(p) && (!isLink(p) || p.type === 'tcrank');   // turns about a vertical axis
 const kind = p => ty(p, 'spur', 'ring', 'diff') ? 'gear' : p.type === 'fric' ? 'fric' : null;
 const byId = id => parts.find(p => p.id === id);
 const mod = (a, n) => ((a % n) + n) % n;
@@ -99,7 +112,7 @@ const RO = p => {
     case 'crank': return p.r + 4;
     case 'cam': return CB + p.h;
     case 'geneva': return GA + 3;
-    case 'shaft': return 3;
+    case 'shaft': case 'pivot': case 'guide': case 'tcrank': case 'trod': case 'trocker': case 'tslider': case 'tcoul': case 'tstone': case 'tplate': return 3;
     case 'rack': case 'worm': case 'hshaft': return 0;
     default: return M * p.z / 2;
   }
@@ -138,6 +151,7 @@ function removeParts(ids) {
   const gone = new Set(ids);
   parts = parts.filter(p => !gone.has(p.id));
   for (const p of parts) if (p.mount && gone.has(p.mount.c)) delete p.mount;
+  pairs = pairs.filter(q => !gone.has(q.a) && !gone.has(q.b));
   for (const L of links) L.ids = L.ids.filter(id => !gone.has(id));
   links = links.filter(L => L.ids.length >= 2);
   for (const id of gone) sel.delete(id);
@@ -154,7 +168,7 @@ function place() {
 // bake the current motion into the rest angles, so editing never makes anything jump
 function freeze() {
   jit = 0;
-  for (const p of parts) { p.free = angle(p); for (const k of ['o', 'a', 'b']) if (p[k]) p[k].free = angle(p[k]); }
+  for (const p of parts) { p.free = angle(p); for (const k of ['o', 'a', 'b']) if (p[k]) p[k].free = angle(p[k]); if (p.type === 'tcrank') p.dir = wrap(p.dir + (p.w || 0) * clock); }
   for (const L of links) L.free = linkPos(L);
   place(); clock = 0; rest();
 }
@@ -221,7 +235,7 @@ const shown = p => isShaft(p) ? [...Array(p.l1 - p.l0 + 1)].some((_, i) => layer
 
 // an empty bench with n layers
 function resetScene(n = 3) {
-  parts = []; links = []; nextId = 1; sel = new Set(); linkDraft = null; outId = null; clock = 0;
+  parts = []; links = []; pairs = []; nextId = 1; sel = new Set(); linkDraft = null; outId = null; clock = 0;
   layerCount = n; activeLayer = 0; hiddenLayers = new Set(); lockedLayers = new Set(); layerNames = []; soloActive = false;
 }
 
@@ -230,9 +244,11 @@ function serialize() {
   return { v: SCENE_V, nextId, outId, showDims, solo: soloActive, scheme: schemeMode,
     layers: [...Array(layerCount)].map((_, l) => ({ name: layerNames[l] || '', visible: !hiddenLayers.has(l), locked: lockedLayers.has(l) })),
     links: links.map(L => ({ id: L.id, kind: L.kind, ids: L.ids, crossed: L.crossed, free: linkPos(L) })),
+    pairs: pairs.map(q => ({ ...q })),
     parts: parts.map(p => {
       const o = { id: p.id, name: p.name, type: p.type, x: p.x, y: p.y, layer: p.layer, free: angle(p) };
       for (const k of PROPS) if (p[k] != null) o[k] = p[k];
+      if (p.type === 'tcrank') o.dir = wrap(p.dir + (p.w || 0) * (clock + jit));   // a crank is saved where it stands
       if (p.motor) o.motor = pickKeys(p.motor, MOTOR_KEYS);
       if (p.load) o.load = pickKeys(p.load, LOAD_KEYS);
       if (p.mount) o.mount = { ...p.mount };
@@ -246,6 +262,7 @@ function load(d) {
   const ls = d.layers || [];
   parts = d.parts.filter(o => TYPES[o.type]).map(make);
   links = (d.links || []).map(L => ({ id: L.id, kind: L.kind, ids: L.ids.slice(), crossed: !!L.crossed, free: L.free || 0, phase: L.free || 0, w: 0 }));
+  pairs = (d.pairs || []).filter(q => byId(q.a) && byId(q.b)).map(q => ({ ...q }));
   nextId = d.nextId; outId = d.outId != null ? d.outId : null; showDims = !!d.showDims;
   layerCount = Math.min(MAXL, Math.max(1, ls.length, ...parts.map(p => (isShaft(p) ? p.l1 : p.layer) + 1)));
   const flag = k => new Set(ls.map((L, l) => L[k] ? l : -1).filter(l => l >= 0));

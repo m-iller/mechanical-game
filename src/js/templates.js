@@ -56,6 +56,21 @@ const TEMPLATES = {
       addPart('machine', { x: X + 100, y, layer: L + 3, d: 56, label: t('name.conveyor'), load: { kind: 'const', tq: 45, n: 60, eta: 0.85 } }));
     return out;
   } },
+  // slider-crank from separate links: crank, rod, slider on a fixed guide. The pairs are made where the joints lie together.
+  slidercrank: { layers: 1, build(x, y, L) {
+    const r = 20, l = 70, a = Math.PI / 3, A = { x: x + r * Math.cos(a), y: y + r * Math.sin(a) }, xs = A.x + Math.sqrt(l * l - (A.y - y) ** 2);
+    const c = addPart('tcrank', { x, y, layer: L, len: r, dir: a, motor: { rpm: 60, tq: 2 } }), rod = addPart('trod', { x: A.x, y: A.y, layer: L, len: l, dir: Math.atan2(y - A.y, xs - A.x) });
+    const g = addPart('guide', { x: x + 75, y, layer: L, len: 110, dir: 0 }), sl = addPart('tslider', { x: xs, y, layer: L, dir: 0 });
+    tmmAttach([rod.id, sl.id]); return [c, rod, g, sl];
+  } },
+  // four-bar: crank 20, coupler 70, rocker 50, frame 80 — a crank-rocker by Grashof's rule
+  fourbar: { layers: 1, build(x, y, L) {
+    const a = 20, b = 70, c = 50, d = 80, B = { x, y: y - a }, dx = x + d - B.x, dy = y - B.y, f = Math.hypot(dx, dy), k = (b * b - c * c + f * f) / (2 * f), h = Math.sqrt(b * b - k * k);
+    const C = { x: B.x + dx * k / f + dy * h / f, y: B.y + dy * k / f - dx * h / f };
+    const cr = addPart('tcrank', { x, y, layer: L, len: a, dir: -Math.PI / 2, motor: { rpm: 60, tq: 2 } }), cp = addPart('trod', { x: B.x, y: B.y, layer: L, len: b, dir: Math.atan2(C.y - B.y, C.x - B.x) });
+    const pv = addPart('pivot', { x: x + d, y, layer: L }), rk = addPart('trocker', { x: x + d, y, layer: L, len: c, dir: Math.atan2(C.y - y, C.x - x - d) });
+    tmmAttach([cp.id, rk.id]); return [cr, cp, pv, rk];
+  } },
   piston: { layers: 1, build(x, y, L) { return [addPart('crank', { x, y, layer: L, r: 14, l: 40, dir: 0, motor: { rpm: 60, tq: 2 } })]; } },
   geneva: { layers: 1, build(x, y, L) { return [addPart('geneva', { x, y, layer: L, z: 4, dir: 0, motor: { rpm: 30, tq: 2 } })]; } },
 };

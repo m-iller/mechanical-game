@@ -985,7 +985,7 @@ addEventListener('keydown', e => {
   const mod2 = e.ctrlKey || e.metaKey;   // by key position, so the shortcuts work in any keyboard layout
   if (mod2 && e.code === 'KeyZ') { e.preventDefault(); if (e.shiftKey) redo(); else undo(); return; }
   if (mod2 && e.code === 'KeyY') { e.preventDefault(); redo(); return; }
-  if (mod2 && e.code === 'KeyC') { if (copySel()) e.preventDefault(); return; }
+  if (mod2 && e.code === 'KeyC') { if (!String(getSelection()) && copySel()) e.preventDefault(); return; }   // text marked in a window is copied as text
   if (mod2 && e.code === 'KeyX') { if (copySel()) { e.preventDefault(); removeSel(); } return; }
   if (mod2 && e.code === 'KeyV') { if (clip) { e.preventDefault(); pasteSel(); } return; }
   if (e.key === 'Enter' && linkDraft) finishLink();

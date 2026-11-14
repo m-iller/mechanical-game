@@ -14,7 +14,7 @@ const mm = v => `${+v.toFixed(2)} ${t('u.mm')}`;
 const rpmText = w => !w ? t('s.stopped') : `${fmt(Math.abs(w), Math.abs(w) < 10 ? 2 : 1)} ${t('u.rpm')} ${w > 0 ? t('s.cw') : t('s.ccw')}`;
 const sizeText = p => {
   if (T(p).grp === 'heat') return p.type === 'tcomp' ? `π ${p.pr}` : p.type === 'tburn' ? `${p.T3} °C` : p.type === 'tboil' ? `${p.pb} bar` : p.type === 'tcond' ? `${p.pk} kPa` : '';
-  if (isHyd(p)) return ty(p, 'hpump', 'hmotor') ? `${p.q} cm³` : p.type === 'hrelief' ? `${p.pset} bar` : p.type === 'hcyl' ? `⌀${p.d}×${p.st}` : ty(p, 'hthrottle') ? `⌀${p.dn}` : '';
+  if (isHyd(p)) return ty(p, 'hpump', 'hmotor') ? `${p.q} cm³` : p.type === 'hrelief' ? `${p.pset} bar` : p.type === 'hcyl' ? `⌀${p.d}×${p.st}` : ty(p, 'hcone', 'horif') ? `⌀${p.dn}/${p.d2}` : ty(p, 'hthrottle', 'hbend', 'hgate') ? `⌀${p.dn}` : '';
   if (isLink(p)) return p.len != null ? `l${+p.len.toFixed(1)}` : '';
   switch (p.type) {
     case 'worm': return `z${p.zw}`;
@@ -539,9 +539,32 @@ function snap(g, x, y) {
 /* ---------- hydraulics in the panel ---------- */
 const LINE_KINDS = ['pressure', 'return', 'suction', 'drain', 'pilot'];
 const barText = p => fmtU(p, 'bar'), lminText = q => fmtU(Math.abs(q), 'L/min');
+const degText = c => `${fmtNum(c, 3)} °C`;
+// what a fitting does to the flow, in a liquid line or a gas one
+function fitRows(p, r) {
+  const rows = [], gas = !!r.gas, f = fitOf(p), Q = Math.abs(r.Q), v1 = Math.abs(gas ? r.v1 : r.Q >= 0 ? r.va : r.vb), v2 = Math.abs(gas ? r.v2 : r.Q >= 0 ? r.vb : r.va), p1 = gas ? r.p1 : r.Q >= 0 ? r.pa : r.pb, p2 = gas ? r.p2 : r.Q >= 0 ? r.pb : r.pa, RH = ['ρ', `${fmtNum(r.rho, 3)} kg/m³`];
+  const zf = { confuser: ['ζ = ζ_loc(n, α) + λ·(1 − n²) / (8·sin(α/2))', [['n', r.n == null ? Math.min(f.d1, f.d2) ** 2 / Math.max(f.d1, f.d2) ** 2 : r.n, ''], ['α', `${f.alpha}°`]], ['ex.confuser', 'ex.narrow']],
+    diffuser: [f.alpha >= 40 ? 'ζ = (1 − n)²' : 'ζ = 3.2·tan^1.25(α/2)·(1 − n)² + λ·(1 − n²) / (8·sin(α/2))', [['n', Math.min(f.d1 || 1, f.d2 || 1) ** 2 / Math.max(f.d1 || 1, f.d2 || 1) ** 2, ''], ['α', `${f.alpha}°`]], ['ex.diffuser', 'ex.narrow']],
+    straight: ['ζ = 0', [], []], bend: [f.rd < 0.5 ? 'ζ = 0.946·sin²(δ/2) + 2.05·sin⁴(δ/2)' : 'ζ = (0.131 + 0.163·(d/R)^3.5)·δ / 90°', [['δ', `${f.ang}°`], ['R/d', f.rd, '']], ['ex.bend']],
+    orif: ['ζ = ((1 + 0.707·√(1 − m) − m) / m)²,   m = (d₀/d)²', [['d₀', f.d0, 'mm'], ['d', f.d, 'mm']], ['ex.orifPlate']], gate: ['ζ = table(h/d)', [['h/d', f.open, '']], ['ex.gate']] }[r.mode] || ['', [], []];
+  rows.push([t('fit.mode'), t('fit.' + r.mode)], gas ? [t('th.m'), fmtU(r.m, 'kg/s')] : [t('hy.Q'), lminText(Q)],
+    [t('fit.v'), `${fmtU(v1, 'm/s')} → ${fmtU(v2, 'm/s')}`, ex('v', v2, 'm/s', 'v = 4·Q / (π·d²)', [['Q', Q, gas ? 'm3/s' : 'L/min']], gas ? ['ex.gasRho'] : [])],
+    ['ζ', fmtNum(r.zeta, 3), ex('ζ', r.zeta, '', zf[0], zf[1], zf[2])],
+    [t('fit.loss'), fmtU(r.loss, 'pressure'), ex('Δp', r.loss, 'pressure', 'Δp = ζ·ρ·v²/2', [['ζ', r.zeta, ''], RH, ['v', r.vref, 'm/s']], [])],
+    [t('fit.p'), `${fmtU(p1, 'pressure')} → ${fmtU(p2, 'pressure')}`, ex('p₂', p2, 'pressure', 'p₁ + ρ·v₁²/2 = p₂ + ρ·v₂²/2 + Δp', [['p₁', p1, 'pressure'], ['v₁', v1, 'm/s'], ['v₂', v2, 'm/s'], ['Δp', r.loss, 'pressure'], RH], ['ex.bernoulli', gas ? 'ex.gasRho' : 'ex.gauge'])]);
+  if (gas) rows.push([t('fit.T'), `${degText(r.T1k - 273.15)} → ${degText(r.T2k - 273.15)}`, ex('T₂', r.T2k, 'degC', 'c_p·T₁ + v₁²/2 = c_p·T₂ + v₂²/2', [['T₁', r.T1k, 'degC'], ['v₁', v1, 'm/s'], ['v₂', v2, 'm/s']], ['ex.stagT'])], [t('fit.Ma'), fmtNum(r.Ma, 2), ex('M', r.Ma, '', 'M = v / √(k·R·T)', [['v', Math.max(v1, v2), 'm/s'], ['T', r.T1k, 'degC']], ['ex.mach'])]);
+  return rows;
+}
+// the temperature of the liquid through a part: every loss of pressure turns to heat
+const tempRow = r => r && r.T1 != null ? [[t('hy.T'), `${degText(r.T1)}, +${fmtNum(r.T2 - r.T1, 2)} K`, ex('ΔT', r.T2 - r.T1, 'K', 'ΔT = Δp_loss / (ρ·c)', [['ρ', `${(hyd.fluid || FLUIDS.oil).rho} kg/m³`], ['c', `${HEAT_C[hyd.fluidName] || HEAT_C.oil} J/(kg·K)`]], ['ex.heatLoss'])]] : [];
 function hydRows(p) {
+  if (p.type === 'htank') return hyd.has && hyd.ok ? [[t('hy.T0'), degText(p.T0 == null ? 40 : p.T0)], [t('hy.heat'), fmtU(hyd.heat || 0, 'power'), ex('Φ', hyd.heat || 0, 'power', 'Φ = Σ Δp_loss·Q', [], ['ex.heatLoss', 'ex.heatTank'])]] : [];
+  if (isFit(p)) { const g = thermo.part.get(p.id), h = hyd.part.get(p.id); return g ? fitRows(p, g) : h && hyd.ok ? [...fitRows(p, h), ...tempRow(h)] : []; }
+  const rr = hydRows0(p); return rr.length ? [...rr, ...tempRow(hyd.part.get(p.id))] : rr;
+}
+function hydRows0(p) {
   const r = hyd.part.get(p.id), rows = []; if (!r || !hyd.ok) return rows;
-  const rho = [['ρ', `${FLUIDS.oil.rho} kg/m³`]];
+  const rho = [['ρ', `${(hyd.fluid || FLUIDS.oil).rho} kg/m³`]];
   if (p.type === 'hpump') {
     const n = Math.abs(p.w) * RPM, dp = r.pP - r.pS;
     rows.push([t('hy.Q'), lminText(r.Q), ex('Q', r.Q, 'L/min', 'Q = q·n·η_v', [['q', `${p.q} cm³`], ['n', n, 'rpm'], ['η_v', ETA_V, '']], ['ex.pumpEta'])],
@@ -569,6 +592,8 @@ function pipeRows(q) {
     ['Re', `${fmtNum(r.Re, 3)} · ${t('hy.' + r.regime)}`, ex('Re', r.Re, '', 'Re = v·d / ν', [['v', v, 'm/s'], ['d', q.d / 1000, 'mm'], ['ν', `${fmtNum(fl.nu * 1e6)} mm²/s`]], ['ex.regime'])],
     [t('hy.dp'), barText(Math.abs(r.dp)), ex('Δp', Math.abs(r.dp), 'bar', 'Δp = (λ·L/d + Σζ)·ρ·v²/2', [['λ', r.lam, ''], ['L', r.L, 'm'], ['d', q.d / 1000, 'mm'], ['Σζ', r.zeta, ''], ['ρ', `${fl.rho} kg/m³`], ['v', v, 'm/s']], ['ex.lambda', 'ex.elbows'])],
     [t('hy.pEnds'), `${barText(r.pa)} → ${barText(r.pb)}`]);
+  if (r.gas && r.rho) rows.push([t('fit.Tgas'), degText(r.T - 273.15)], [t('fit.rho'), `${fmtNum(r.rho, 3)} kg/m³`, ex('ρ', r.rho, '', 'ρ = p / (R·T)', [['p', r.pa, 'pressure'], ['T', r.T, 'degC']], ['ex.gasRho'])], [t('fit.Ma'), fmtNum(r.Ma, 2), ex('M', r.Ma, '', 'M = v / √(k·R·T)', [['v', v, 'm/s'], ['T', r.T, 'degC']], ['ex.mach'])]);
+  else rows.push(...tempRow(r));
   return rows;
 }
 function pipePanel(q, body) {
@@ -586,6 +611,11 @@ function hydFields(p) {
   if (p.type === 'hcyl') out.push(slider(t('hy.rod'), 4, 300, 1, () => rodD(p), v => { p.dr = Math.min(v, p.d - 2); commit(); }, unitSym('mm')), slider(t('hy.s'), 0, p.st, 0.5, () => +(p.s || 0).toFixed(1), v => { p.s = v; delete p.jam; commit(); }, unitSym('mm')),
     num('hy.F', 'F', -1e6, 1e6, 10, unitSym('N')), num('hy.Fb', 'Fb', 0, 1e6, 10, unitSym('N')), rowOf(btn(t('hy.grav'), () => { p.grav = !p.grav; if (!p.grav) delete p.grav; commit(); }, !!p.grav)));
   if (p.type === 'hmotor') out.push(num('hy.M', 'M', 0, 1e5, 0.1, unitSym('Nm')));
+  if (p.type === 'htank') out.push(num('hy.T0', 'T0', -20, 150, 1, '°C', 40));
+  if (p.type === 'hcone') out.push(num('fit.d2', 'd2', 2, 1000, 0.5, unitSym('mm'), p.dn), num('fit.al', 'al', 1, 180, 1, '°', 20));
+  if (p.type === 'hbend') out.push(num('fit.ang', 'ang', 5, 180, 1, '°', 90), num('fit.rd', 'rd', 0, 10, 0.1, '', 1.5));
+  if (p.type === 'horif') out.push(num('fit.d0', 'd2', 1, 1000, 0.5, unitSym('mm'), p.dn));
+  if (p.type === 'hgate') out.push(slider(t('fit.open'), 12.5, 100, 0.5, () => +((p.op == null ? 1 : p.op) * 100).toFixed(1), v => { p.op = v / 100; commit(); }, '%'));
   if (p.type !== 'hnode' || true) out.push(rowOf(btn(t('hy.lay'), () => { pipeStart(null); })));
   return out;
 }
@@ -599,12 +629,16 @@ function sidePoint(p) {
   if (best) return best.q;
   return { x, y: last.y };
 }
+// a new pipe that leaves a fitting or a tee carries on with the fluid of the line already there, at the fitting's bore
+const lineNear = (p, k) => isFit(p) || p.type === 'hnode' ? pipes.find(q => !isWire(q) && (q.a === p.id || q.b === p.id)) : null;
+const fitBore = (p, k) => ty(p, 'hcone') && k === 1 ? p.d2 || p.dn : p.dn;
 // a click while a pipe is being laid: a port starts or ends it, another pipe gets a tee, anything else is a corner
 function pipeClick(w) {
   const r = Math.max(3.5, 10 / view.scale), port = portAt(w, r), d = pipeDraft;
   if (d.a == null) { if (port) { d.a = port.p.id; d.pa = port.k; ui(); } return; }
   const via = to => { const e = pipeElbow(pipeLast(d), to, layout.route || '45', d.flip); return e ? [...d.pts, [e.x, e.y]] : d.pts; };
-  const a = byId(d.a), done = (b, pb, at) => { const fromTank = a.type === 'htank' || b.type === 'htank', dm = portDomain(a) || {}, thm = dm.domain === 'th'; addPipe(a, d.pa, b, pb, { pts: via(at || portPos(b, pb)), d: thm ? 60 : 10, fluid: dm.domain === 'el' ? 'el' : thm ? (typeof gasOf === 'function' ? gasOf(a, d.pa) : 'air') : 'oil', kind: fromTank ? 'return' : 'pressure', mat: a.type === 'hcyl' || b.type === 'hcyl' ? 'hose' : 'steel' }); pipeDraft = null; commit(); };
+  const a = byId(d.a), done = (b, pb, at) => { const fromTank = a.type === 'htank' || b.type === 'htank', dm = portDomain(a) || {}, thm = dm.domain === 'th', near = lineNear(a, d.pa) || lineNear(b, pb); const hb = (portDomain(b) || {}).domain === 'th', bore = isFit(a) ? fitBore(a, d.pa) : isFit(b) ? fitBore(b, pb) : near ? near.d : thm || hb ? 60 : 10;
+    addPipe(a, d.pa, b, pb, { pts: via(at || portPos(b, pb)), d: bore, fluid: dm.domain === 'el' ? 'el' : thm ? gasOf(a, d.pa) : near ? near.fluid : hb ? gasOf(b, pb) : 'oil', kind: fromTank ? 'return' : 'pressure', mat: a.type === 'hcyl' || b.type === 'hcyl' ? 'hose' : 'steel' }); pipeDraft = null; commit(); };
   if (port && !(port.p.id === d.a && port.k === d.pa)) return done(port.p, port.k);
   const hitP = pipeAt(w, r * 0.6); if (hitP) { const at = { x: hitP.x, y: hitP.y }; return done(pipeTee(hitP, a.layer), 0, at); }
   const c = pipeAim(w), e = pipeElbow(pipeLast(d), c, layout.route || '45', d.flip);

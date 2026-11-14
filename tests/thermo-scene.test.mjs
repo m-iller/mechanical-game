@@ -63,3 +63,20 @@ test('with a design speed on the compressor the flow follows the shaft: lighter 
   assert.deepEqual(r[0].warn, []);                               // off the design point the lines run fast and the heater gets more: those warnings are right
   assert.ok(r[1].n > r[0].n * 1.2 && r[1].m > r[0].m * 1.2);
 });
+
+test('a diffuser in the air line of a gas turbine: the air slows down, its static pressure and temperature rise, the figures reach the combustor', async () => {
+  const r = bench().run(() => {
+    resetScene(3); const m = insertTemplate('gasturbine', 0, 0); solve(); const c = m[0], cc = m[4], base = thermo.part.get(cc.id).pin, line0 = pipes.find(q => q.a === c.id);
+    pipes = pipes.filter(q => q !== line0);
+    const cone = addPart('hcone', { x: -20, y: -45, layer: 1, dn: 80, d2: 160, al: 10 });
+    addPipe(c, 1, cone, 0, { d: 80, fluid: 'air' }); addPipe(cone, 1, cc, 0, { d: 160, fluid: 'air' }); solve();
+    const f = thermo.part.get(cone.id), l1 = thermo.pipe.get(pipes[pipes.length - 2].id), l2 = thermo.pipe.get(pipes[pipes.length - 1].id);
+    return { f, l1: [l1.v, l1.Ma, l1.rho, l1.T], l2: [l2.v, l2.pa], base, pin: thermo.part.get(cc.id).pin, turb: !!thermo.part.get(c.id).turb, warn: warnings.map(w => w.code), hyd: hyd.has };
+  });
+  assert.equal(r.f.mode, 'diffuser'); assert.ok(r.turb); assert.equal(r.hyd, false);            // a gas line is none of the hydraulic network's business
+  close(r.f.v1, r.l1[0], 2e-2); close(r.f.v1 / r.f.v2, 4, 1e-9);                                 // area ratio 4
+  close(r.f.p2 - r.f.p1, r.f.rho * (r.f.v1 ** 2 - r.f.v2 ** 2) / 2 - r.f.loss, 1e-9); assert.ok(r.f.p2 > r.f.p1);
+  close(r.f.T2k - r.f.T1k, (r.f.v1 ** 2 - r.f.v2 ** 2) / (2 * 1.4 * 287 / 0.4), 1e-9); assert.ok(r.f.T2k > r.f.T1k);
+  close(r.l1[1], r.l1[0] / Math.sqrt(1.4 * 287 * r.l1[3]), 1e-9); close(r.l1[2], 8e5 / (287 * r.l1[3]), 1e-2);
+  close(r.l2[1], r.f.p2, 1e-9); assert.ok(Math.abs(r.pin - r.base) / r.base < 0.05);
+});

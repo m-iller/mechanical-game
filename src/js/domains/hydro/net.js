@@ -8,6 +8,7 @@
      cyl      { k:'cyl', a, b, A1, A2, F, stop }         piston area A1 at port a, annulus A2 at port b; F resists extension;
                                                          stop: +1 held at the end of extension, −1 at the end of retraction
      motor    { k:'motor', a, b, q, M }                  displacement q m³/rad turning against torque M: Δp·q = M
+     fit      { k:'fit', a, b, f }                       a fitting — cone, bend, orifice plate, gate valve — see fittingLoss() in pipes/loss.js
    Unknowns: the pressure of every free node, and one per element — its flow, a cylinder's speed, a motor's speed.
    Equations: flows into each free node sum to zero, and each element's own law. Solved by Levenberg–Marquardt in scaled units
    (pressure in bar, flow in 0.1 L/s) from the last solution, so a valve click moves the network to its new state in a few steps. */
@@ -32,7 +33,8 @@ function hydroSolve(net, x0) {
       const [qa, qb] = fl[i]; if (ix.has(e.a)) f[ix.get(e.a)] -= qa / HS.q; if (ix.has(e.b)) f[ix.get(e.b)] += qb / HS.q;
       if (e.k === 'pump') return;
       const dp = P(x, e.a) - P(x, e.b), r = ex0[i], Q = qa;
-      if (e.k === 'pipe') f[r] = (dp - pipeLoss(e, Q, fluid).dp) / HS.p;
+      if (e.k === 'pipe') f[r] = (dp - pipeLoss(e, Q, e.fl || fluid).dp) / HS.p;
+      else if (e.k === 'fit') f[r] = (dp - fittingLoss(e.f, Q, fluid).dp - 1e3 * Q) / HS.p;   // the tiny linear term keeps the slope finite at rest
       else if (e.k === 'orifice') { const c = (e.Cd || 0.62) * e.A; f[r] = (dp - fluid.rho / 2 * Q * Math.abs(Q) / (c * c) - 1e7 * Q) / HS.p; }   // the small linear term keeps the slope finite at rest
       else if (e.k === 'relief') f[r] = (Q - (e.kq || 2e-10) * Math.max(0, dp - e.pset) - 1e-15 * dp) / HS.q;
       else if (e.k === 'check') { const c = 0.62 * e.A, open = dp - (e.pcrack || 0); f[r] = open > 0 ? (open - fluid.rho / 2 * Q * Math.abs(Q) / (c * c) - 1e7 * Q) / HS.p : (Q - 1e-15 * dp) / HS.q; }

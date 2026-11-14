@@ -157,6 +157,17 @@ const TEMPLATES = {
     const rod = addPart('trod', { x: x + r, y, layer: L, len: l, dir: 0 }), gd = addPart('guide', { x: x + 100, y, layer: L, len: 110, dir: 0 }), sl = addPart('tslider', { x: x + r + l, y, layer: L, dir: 0 });
     tmmAttach([rod.id, sl.id]); return [m, g, rod, gd, sl];
   } },
+  /* water line with the usual fittings: a confuser into a narrow throat, a diffuser out of it (a Venturi tube: the static pressure
+     dips in the throat and comes back), then a bend, an orifice plate and a half-open gate valve on the way to the second tank. */
+  venturi: { layers: 2, build(x, y, L) {
+    const H = L + 1, W = { fluid: 'water', d: 32 }, m = addPart('emotor', { x, y, layer: L, motor: { kind: 'induction', P: 750, n: 1420, ks: 2.2, km: 2.2, rpm: 1420, tq: 5 } }), sh = addPart('shaft', { x, y, l0: L, l1: H });
+    const pump = addPart('hpump', { x, y, layer: H, q: 60, dir: -Math.PI / 2 }), t1 = addPart('htank', { x, y: y + 40, layer: H, T0: 20 }), t2 = addPart('htank', { x: x + 110, y: y + 50, layer: H, T0: 20 });
+    const c1 = addPart('hcone', { x: x + 30, y: y - 40, layer: H, dn: 32, d2: 12, al: 30 }), c2 = addPart('hcone', { x: x + 70, y: y - 40, layer: H, dn: 12, d2: 32, al: 10 });
+    const bd = addPart('hbend', { x: x + 110, y: y - 40, layer: H, dn: 32, ang: 90, rd: 1.5 }), op = addPart('horif', { x: x + 110, y: y - 12, layer: H, dn: 32, d2: 20, dir: Math.PI / 2 }), gv = addPart('hgate', { x: x + 110, y: y + 20, layer: H, dn: 32, op: 0.5, dir: Math.PI / 2 });
+    addPipe(t1, 0, pump, 0, { ...W, d: 50, kind: 'suction' }); addPipe(pump, 1, c1, 0, { ...W, pts: [[x, y - 40]] }); addPipe(c1, 1, c2, 0, { ...W, d: 12 });
+    addPipe(c2, 1, bd, 0, W); addPipe(bd, 1, op, 0, W); addPipe(op, 1, gv, 0, W); addPipe(gv, 1, t2, 0, { ...W, kind: 'return' });
+    return [m, sh, pump, t1, t2, c1, c2, bd, op, gv];
+  } },
   // four-bar: crank 20, coupler 70, rocker 50, frame 80 — a crank-rocker by Grashof's rule
   fourbar: { layers: 1, build(x, y, L) {
     const a = 20, b = 70, c = 50, d = 80, B = { x, y: y - a }, dx = x + d - B.x, dy = y - B.y, f = Math.hypot(dx, dy), k = (b * b - c * c + f * f) / (2 * f), h = Math.sqrt(b * b - k * k);

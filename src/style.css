@@ -147,3 +147,5 @@ canvas.graphs{display:block;width:100%;border:1px solid var(--line);background:v
 .info h3 button{padding:0 7px;flex:none}
 .info dl{margin:0;padding:8px 10px}
 canvas.splitting{cursor:row-resize}
+.panel select{min-width:0;max-width:100%}
+.row > select{flex:1 1 0}

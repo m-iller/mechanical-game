@@ -177,6 +177,15 @@ await dragTo(await topPos(30, -50), await topPos(20, -15)); await page.waitForTi
 await page.evaluate(() => { resetScene(1); insertTemplate('gearcrank', 0, 0); solve(); running = true; fit(); ui(); }); await page.waitForTimeout(400);
 s = await state(); if (s.lock || s.warnings.some(w => w[0] !== 'info') || await page.evaluate(() => tmmStuck)) fail('gearcrank: ' + s.lock + JSON.stringify(s.warnings));
 if (shotGC) await page.screenshot({ path: shotGC });
+// water line with fittings: solves, the cone's info window shows its figures, and a pipe drawn from a fitting takes the line's fluid and the port's bore
+await page.evaluate(() => { resetScene(2); const m = insertTemplate('venturi', 0, 0); solve(); viewMode = 'top'; setActive(1); fit(); ui(); infoOpen('p' + m[5].id, { x: 30, y: 60 }); });
+await page.waitForTimeout(300);
+{ const v = await page.evaluate(() => ({ ok: hyd.ok, err: warnings.filter(w => w.level === 'error').length, rows: [...document.querySelectorAll('.info dt')].length, mode: hyd.part.get(parts.find(p => p.type === 'hcone').id).mode }));
+  if (!v.ok || v.err || v.rows < 6 || v.mode !== 'confuser') fail('venturi: ' + JSON.stringify(v));
+  if (process.env.SHOT_VT) await page.screenshot({ path: process.env.SHOT_VT });
+  const made = await page.evaluate(() => { const c = parts.filter(p => p.type === 'hcone')[1], old = pipes.find(q => q.a === c.id && q.pa === 1); pipes = pipes.filter(q => q !== old); const b = byId(old.b); pipeStart({ p: c, k: 1 }); pipeClick(portPos(b, old.pb)); const q = pipes[pipes.length - 1]; return [q.fluid, q.d, hyd.ok]; });
+  if (made.join() !== 'water,32,true') fail('pipe from a fitting: ' + made); }
+await page.evaluate(() => { for (const k of [...infoWins.keys()]) infoClose(k); });
 // laying a pipe in the side view: port on one layer, port on another
 await page.evaluate(() => { resetScene(2); addPart('htank', { x: 0, y: 0, layer: 0 }); addPart('hpump', { x: 60, y: 0, layer: 1, q: 5, motor: { rpm: 1000, tq: 20 } }); solve(); viewMode = 'both'; fit(); setActive(1); pipeDraft = { a: null, pts: [], cur: null }; ui(); });
 const sa = await sidePos(0, 0), sb = await sidePos(49, 1);

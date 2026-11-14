@@ -6,7 +6,7 @@
 Все пункты плана и шесть итоговых демо-сцен выполнены. Ниже — раздел «Известные ограничения и допущения».
 
 ## С чего продолжить
-Если работа продолжается: бэклог в `docs/ROADMAP.md` и список ограничений ниже. Перед слиянием в `main` стоит посмотреть приложение глазами на Windows: сборка `gear-bench-…-windows-portable.exe` собирается на Linux, но здесь не запускалась.
+Если работа продолжается: бэклог в `docs/ROADMAP.md` и список ограничений ниже. Перед слиянием в `main` стоит посмотреть приложение глазами на Windows: сборка `gear-bench-…-windows-portable.exe` собирается на Linux (`npx electron-builder --win portable`), но здесь не запускалась: нет ни Windows, ни wine. Установщик NSIS (`npm run dist:win`) без wine на Linux не собирается — его надо собирать на Windows. AppImage и deb пересобраны на последнем коммите, AppImage запускался под Xvfb.
 Проверка: `npm test` (129 тестов), `node scripts/smoke.mjs shot.png` (нужны Playwright и Chrome), `npm run dist`.
 
 ## Фаза 0 — разведка и план

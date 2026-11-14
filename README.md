@@ -117,7 +117,7 @@ This is a kinematic model: rigid parts, exact ratios, no dynamics.
 - A differential with nothing deciding the split turns both shafts equally.
 - Tooth profiles are true involutes, without undercut or root fillets. Bevel and worm teeth are drawn schematically.
 - The rack is endless: its teeth scroll while the bar stays between its guides.
-- Crank and piston, cam and follower, the Geneva drive and the differential are single units, not assembled from loose parts.
+- The older ready-made units of the "Mechanisms" group (crank and piston, cam and follower, Geneva drive, ratchet) and the differential are single units; the same mechanisms can be put together from links of the "Linkages" group.
 - Two coaxial shafts cannot pass through the same layer, so there are no hollow shafts.
 
 ## Licence

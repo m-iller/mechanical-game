@@ -13,6 +13,7 @@ const fmtT = v => v >= 100 ? v.toFixed(0) : v >= 10 ? v.toFixed(1) : v.toFixed(2
 const mm = v => `${+v.toFixed(2)} ${t('u.mm')}`;
 const rpmText = w => !w ? t('s.stopped') : `${fmt(Math.abs(w), Math.abs(w) < 10 ? 2 : 1)} ${t('u.rpm')} ${w > 0 ? t('s.cw') : t('s.ccw')}`;
 const sizeText = p => {
+  if (isHyd(p)) return ty(p, 'hpump', 'hmotor') ? `${p.q} cm³` : p.type === 'hrelief' ? `${p.pset} bar` : p.type === 'hcyl' ? `⌀${p.d}×${p.st}` : ty(p, 'hthrottle') ? `⌀${p.dn}` : '';
   if (isLink(p)) return p.len != null ? `l${+p.len.toFixed(1)}` : '';
   switch (p.type) {
     case 'worm': return `z${p.zw}`;
@@ -73,6 +74,7 @@ function planetFields(c) {
   return [slider(t('pl.want'), 2.5, 12, 0.05, () => +(pickRatio || 1 + ring.z / sun.z).toFixed(2), v => { pickRatio = v; fill(); }), labelled(t('pl.options'), box)];
 }
 function specRows(p) {
+  if (isHyd(p)) return [...hydRows(p), ...(p.type === 'hcyl' ? linkRows(p) : []), ...(ty(p, 'hpump', 'hmotor') ? [[t('sp.n'), rpmText(p.w)]] : [])];
   if (isLink(p)) return [...linkRows(p), ...(isDriver(p) ? [[t('sp.n'), rpmText(p.w)]] : []), ...tmmCycleRows(p)];
   const r = [], add = (k, v) => r.push([t(k), v]), z = p.z, d = pitchD(p), o = outOf(p);
   const mates = meshes.filter(m => m.a === p || m.b === p);
@@ -212,7 +214,7 @@ function motorRows(p) {
   return rows;
 }
 function renderMotors() {
-  const ms = parts.filter(p => p.motor), box = $('motors'), key = ms.map(p => p.id + (p.motor.kind || '')).join() + lang;
+  const ms = parts.filter(p => p.motor && !p.motor.auto), box = $('motors'), key = sceneGen + ':' + ms.map(p => p.id + (p.motor.kind || '')).join() + lang;
   if (key !== motorsKey) {
     motorsKey = key; box.textContent = '';
     if (!ms.length) box.append(el('p', t('motor.none'), { className: 'hint' }));
@@ -277,11 +279,13 @@ function renderLayers() {
 }
 function renderSel() {
   const ps = selParts(), p = ps.length === 1 ? ps[0] : null, body = $('sel-body');
-  const key = JSON.stringify([lang, layerCount, linkDraft && [linkDraft.kind, linkDraft.ids], outId, links.map(L => [L.ids, L.crossed]), ps.map(q => [q.id, q.type, q.layer, q.on, q.held, q.loose, !!q.motor, q.load && q.load.kind, q.mount && q.mount.c, q.l0, q.l1, q.law]), pairs.map(q => [q.id, q.type])]);
+  const key = JSON.stringify([sceneGen, selPipe, pipeDraft && [pipeDraft.a, 1], pipes.map(q => [q.id, q.kind, q.fluid, q.mat, q.pts.length]), lang, layerCount, linkDraft && [linkDraft.kind, linkDraft.ids], outId, links.map(L => [L.ids, L.crossed]), ps.map(q => [q.id, q.type, q.layer, q.on, q.held, q.loose, !!q.motor, q.load && q.load.kind, q.mount && q.mount.c, q.l0, q.l1, q.law, q.pos, q.st]), pairs.map(q => [q.id, q.type])]);
   $('sel-name').textContent = p ? `${p.name} · ${typeName(p)}` : ps.length ? t('sel.many', { n: ps.length }) : t('sel.none');
   if (key !== selKey) {
     selKey = key; selRefresh = []; graphTick = null; body.textContent = '';
-    if (linkDraft) {
+    if (pipeDraft) body.append(el('p', t(pipeDraft.a == null ? 'hy.pickFirst' : 'hy.pickNext'), { className: 'hint' }), rowOf(btn(t('btn.cancel'), () => { pipeDraft = null; ui(); })));
+    else if (selPipe != null && pipes.some(q => q.id === selPipe)) pipePanel(pipes.find(q => q.id === selPipe), body);
+    else if (linkDraft) {
       body.append(el('p', t('link.pick', { kind: t('type.' + (linkDraft.kind === 'belt' ? 'pulley' : 'sprocket')), list: nameOf(linkDraft.ids) }), { className: 'hint' }),
         rowOf(btn(t('btn.done'), finishLink), btn(t('btn.cancel'), () => { linkDraft = null; ui(); })));
       body.firstChild.nextSibling.firstChild.className = 'primary';
@@ -302,9 +306,9 @@ function renderSel() {
       else body.append(labelled(t('sel.layer'), layerSeg(p.layer, l => { setLayer(p, l); commit(); })));
       const tg = [];
       if (T0.tog) tg.push(btn(t(`tog.${p.type}.${p.on ? 1 : 0}`), () => { p.on = !p.on; commit(); }, p.on));
-      if (!isLin(p) && !ty(p, 'emotor', 'machine') && (!isLink(p) || isDriver(p))) tg.push(btn(t('tog.motor'), () => { if (p.motor) delete p.motor; else { p.motor = { kind: 'speed', rpm: 60, tq: 2 }; delete p.load; } commit(); }, !!p.motor));
-      if (!isLin(p) && !isShaft(p) && !isLink(p) && !ty(p, 'emotor', 'machine', 'brake') && !p.motor) tg.push(btn(t('tog.load'), () => { if (p.load) delete p.load; else p.load = { kind: 'const', tq: 1, n: 1000, eta: 1 }; commit(); }, !!p.load));
-      if (!isLin(p) && !isLink(p) && p.type !== 'brake') tg.push(btn(t('tog.held'), () => { p.held = !p.held; commit(); }, !!p.held));
+      if (!isLin(p) && !ty(p, 'emotor', 'machine') && (!isLink(p) || isDriver(p)) && !isHyd(p)) tg.push(btn(t('tog.motor'), () => { if (p.motor) delete p.motor; else { p.motor = { kind: 'speed', rpm: 60, tq: 2 }; delete p.load; } commit(); }, !!p.motor));
+      if (!isLin(p) && !isShaft(p) && !isLink(p) && !isHyd(p) && !ty(p, 'emotor', 'machine', 'brake') && !p.motor) tg.push(btn(t('tog.load'), () => { if (p.load) delete p.load; else p.load = { kind: 'const', tq: 1, n: 1000, eta: 1 }; commit(); }, !!p.load));
+      if (!isLin(p) && !isLink(p) && !isHyd(p) && p.type !== 'brake') tg.push(btn(t('tog.held'), () => { p.held = !p.held; commit(); }, !!p.held));
       if (isVert(p) && !isShaft(p) && !ty(p, 'clutch', 'diff')) tg.push(btn(t('tog.loose'), () => { p.loose = !p.loose; commit(); }, !!p.loose));
       if (p.mount) tg.push(btn(t('tog.unmount'), () => { delete p.mount; commit(); }));
       if (tg.length) { const r = rowOf(...tg); r.classList.add('togs'); body.append(r); }
@@ -330,6 +334,7 @@ function renderSel() {
         body.append(mine.length ? labelled(t('sel.pairs'), box) : el('p', t('sel.noPairs'), { className: 'hint' }), ...tmmFields(p));
         const gc = el('canvas', null, { className: 'graphs' }); body.append(gc); graphTick = () => { if (gc.isConnected) drawGraphs(gc, p); }; selRefresh.push(graphTick);
       }
+      if (isHyd(p)) body.append(...hydFields(p));
       if (p.type === 'carrier') body.append(...planetFields(p));
       if (p.type === 'flywheel') body.append(slider(t('link.J'), 0, 10000, 0.0001, () => +flyJ(p).toPrecision(4), v => { p.J = v; commit(); }, unitSym('kgm2')));
       if (p.load) body.append(...loadFields(p));
@@ -349,7 +354,7 @@ function ui() {
   const moving = parts.filter(p => !isShaft(p) && isDriven(p)).length, total = parts.filter(p => !isShaft(p)).length;
   const err = (warnings.find(w => w.level === 'error') || {}).text || (tmmStuck ? t('w.linkStuck') : '');
   $('status').className = 'status' + (linkDraft ? '' : lockMsg || err ? ' locked' : !running ? ' paused' : '');
-  $('status-text').textContent = linkDraft ? t('status.link') : !total ? t('status.empty') : lockMsg ? lockMsg : err ? err : hintMsg ? hintMsg : !running ? t('status.paused') : t('status.running', { n: moving, m: total });
+  $('status-text').textContent = pipeDraft ? t(pipeDraft.a == null ? 'hy.pickFirst' : 'hy.pickNext') : linkDraft ? t('status.link') : !total ? t('status.empty') : lockMsg ? lockMsg : err ? err : hintMsg ? hintMsg : !running ? t('status.paused') : t('status.running', { n: moving, m: total });
   const nt = TYPES[$('new-type').value], nz = $('new-z'); $('new-size-row').hidden = !nt.key;
   if (nt.key) { nz.min = nt.lim[0]; nz.max = nt.lim[1]; nz.step = nt.lim[2]; const nn = $('new-z-num'); nn.min = nz.min; nn.max = nz.max; nn.step = nz.step; if (document.activeElement !== nn) nn.value = nz.value; $('new-z-lab').textContent = t('size.' + $('new-type').value); }
   $('new-layer').textContent = t('add.onLayer', { l: LET(activeLayer) });
@@ -383,6 +388,7 @@ function applyLang() {
 function pick(ids, toggle) {
   if (toggle) for (const id of ids) { if (sel.has(id)) sel.delete(id); else sel.add(id); }
   else sel = new Set(ids);
+  if (ids.length) selPipe = null;
   for (const q of selParts()) if (!isShaft(q) && lockedLayers.has(q.layer)) sel.delete(q.id);   // a locked layer gives nothing up
   const p = one(); if (p && !onActive(p)) activeLayer = p.layer;
   ui();
@@ -479,10 +485,75 @@ function snap(g, x, y) {
   return { x, y };
 }
 
+/* ---------- hydraulics in the panel ---------- */
+const LINE_KINDS = ['pressure', 'return', 'suction', 'drain', 'pilot'];
+const barText = p => fmtU(p, 'bar'), lminText = q => fmtU(Math.abs(q), 'L/min');
+function hydRows(p) {
+  const r = hyd.part.get(p.id), rows = []; if (!r || !hyd.ok) return rows;
+  const rho = [['ρ', `${FLUIDS.oil.rho} kg/m³`]];
+  if (p.type === 'hpump') {
+    const n = Math.abs(p.w) * RPM, dp = r.pP - r.pS;
+    rows.push([t('hy.Q'), lminText(r.Q), ex('Q', r.Q, 'L/min', 'Q = q·n·η_v', [['q', `${p.q} cm³`], ['n', n, 'rpm'], ['η_v', ETA_V, '']], ['ex.pumpEta'])],
+      [t('hy.p'), barText(r.pP), ex('p', r.pP, 'bar', 'p = what the network asks at this flow', [], ['ex.hydSteady'])],
+      [t('hy.Ph'), fmtU(r.P, 'power'), ex('P', r.P, 'power', 'P = Δp·Q', [['Δp', dp, 'bar'], ['Q', r.Q, 'L/min']], [])],
+      [t('io.M'), fmtU(r.M, 'Nm'), ex('M', r.M, 'Nm', 'M = Δp·q / (2π·η_m)', [['Δp', dp, 'bar'], ['q', `${p.q} cm³`], ['η_m', ETA_M, '']], ['ex.pumpEta'])]);
+  } else if (p.type === 'hcyl') {
+    const A1 = cylA1(p), A2 = cylA2(p), out = r.v >= 0, left = r.v > 1e-9 ? (p.st - p.s) / 1000 / r.v : r.v < -1e-9 ? p.s / 1000 / -r.v : 0;
+    rows.push([t('hy.v'), r.held ? t('hy.held') : fmtU(r.v, 'mm/s'), ex('v', r.v, 'mm/s', out ? 'v = Q / A₁' : 'v = Q / A₂', [['Q', Math.abs(out ? r.Q : r.v * A2), 'L/min'], [out ? 'A₁' : 'A₂', `${fmtNum((out ? A1 : A2) * 1e4)} cm²`]], ['ex.hydSteady'])],
+      [t('hy.pA'), barText(r.pA), ex('p_A', r.pA, 'bar', 'p_A·A₁ − p_B·A₂ = F', [['F', r.v < -1e-9 && p.Fb != null ? -p.Fb : p.F || 0, 'N'], ['A₁', `${fmtNum(A1 * 1e4)} cm²`], ['A₂', `${fmtNum(A2 * 1e4)} cm²`], ['p_B', r.pB, 'bar']], ['ex.cylStatic'])],
+      [t('hy.pB'), barText(r.pB)], [t('hy.s'), `${fmtNum(p.s)} / ${p.st} ${unitSym('mm')}`]);
+    if (left) rows.push([t('hy.left'), `${fmtNum(left, 2)} ${unitSym('s')}`]);
+  } else if (p.type === 'hmotor') {
+    rows.push([t('io.n'), fmtU(Math.abs(r.w), 'rpm'), ex('n', Math.abs(r.w), 'rpm', 'n = Q·η_v / q', [['Q', r.Q, 'L/min'], ['q', `${p.q} cm³`], ['η_v', ETA_V, '']], ['ex.pumpEta'])],
+      [t('hy.dp'), barText(r.dp), ex('Δp', r.dp, 'bar', 'Δp = 2π·M / (q·η_m)', [['q', `${p.q} cm³`], ['η_m', ETA_M, '']], ['ex.pumpEta'])]);
+  } else if (p.type === 'hrelief') rows.push([t('hy.Q'), r.Q > 1e-7 ? lminText(r.Q) : t('hy.shut'), ex('Q', r.Q, 'L/min', 'Q = k·(p − p_set),  p > p_set', [['p', r.pa, 'bar'], ['p_set', p.pset * 1e5, 'bar']], ['ex.relief'])]);
+  else if (r.Q != null) rows.push([t('hy.Q'), lminText(r.Q)], [t('hy.dp'), barText(Math.abs(r.dp || 0)), ex('Δp', Math.abs(r.dp || 0), 'bar', 'Δp = ρ/2·(Q / (C_d·A))²', [['Q', Math.abs(r.Q), 'L/min'], ['C_d', 0.62, ''], ['d', p.dn / 1000, 'mm'], ...rho], ['ex.orifice'])]);
+  return rows;
+}
+function pipeRows(q) {
+  const r = hyd.pipe.get(q.id), rows = [[t('hy.L'), `${fmtNum(pipeLen(q), 3)} ${unitSym('m')}`]]; if (!r || !hyd.ok) return rows;
+  const fl = r.fl, v = Math.abs(r.v);
+  rows.push([t('hy.Q'), lminText(r.Q)],
+    [t('hy.vel'), fmtU(v, 'm/s'), ex('v', v, 'm/s', 'v = 4·Q / (π·d²)', [['Q', Math.abs(r.Q), 'L/min'], ['d', q.d / 1000, 'mm']], [])],
+    ['Re', `${fmtNum(r.Re, 3)} · ${t('hy.' + r.regime)}`, ex('Re', r.Re, '', 'Re = v·d / ν', [['v', v, 'm/s'], ['d', q.d / 1000, 'mm'], ['ν', `${fmtNum(fl.nu * 1e6)} mm²/s`]], ['ex.regime'])],
+    [t('hy.dp'), barText(Math.abs(r.dp)), ex('Δp', Math.abs(r.dp), 'bar', 'Δp = (λ·L/d + Σζ)·ρ·v²/2', [['λ', r.lam, ''], ['L', r.L, 'm'], ['d', q.d / 1000, 'mm'], ['Σζ', r.zeta, ''], ['ρ', `${fl.rho} kg/m³`], ['v', v, 'm/s']], ['ex.lambda', 'ex.elbows'])],
+    [t('hy.pEnds'), `${barText(r.pa)} → ${barText(r.pb)}`]);
+  return rows;
+}
+function pipePanel(q, body) {
+  const a = byId(q.a), b = byId(q.b), set = k => v => { q[k] = v; commit(); }, dl = el('dl'); dl.dataset.why = 'pipe' + q.id + ':';
+  body.append(el('p', `${a.name} ${portsOf(a)[q.pa][0]} → ${b.name} ${portsOf(b)[q.pb][0]}`, { className: 'hint' }), slider(t('hy.d'), 2, 300, 0.5, () => q.d, set('d'), unitSym('mm')),
+    labelled(t('hy.kind'), choice(LINE_KINDS.map(k => [k, t('line.' + k)]), q.kind, set('kind'))), labelled(t('hy.fluid'), choice(Object.keys(FLUIDS).map(k => [k, t('fluid.' + k)]), q.fluid, set('fluid'))),
+    labelled(t('hy.mat'), choice(Object.keys(ROUGH).map(k => [k, t('mat.' + k)]), q.mat, set('mat'))), dl);
+  selRefresh.push(() => fillDl(dl, pipeRows(q)));
+  const rm = btn(t('btn.remove'), () => { pipes = pipes.filter(x => x !== q); selPipe = null; commit(); }); rm.className = 'danger';
+  body.append(rowOf(q.pts.length && btn(t('hy.straight'), () => { q.pts = []; commit(); }), rm));
+}
+function hydFields(p) {
+  const out = [], num = (key, k, lo, hi, step, unit, def = 0) => slider(t(key), lo, hi, step, () => p[k] == null ? def : p[k], v => { p[k] = v; commit(); }, unit);
+  if (p.type === 'hvalve') out.push(rowOf(...[[1, 'P→A'], [0, '0'], [-1, 'P→B']].map(([k, lb]) => btn(lb, () => { p.pos = k; commit(); }, (p.pos || 0) === k))));
+  if (p.type === 'hcyl') out.push(slider(t('hy.rod'), 4, 300, 1, () => rodD(p), v => { p.dr = Math.min(v, p.d - 2); commit(); }, unitSym('mm')), slider(t('hy.s'), 0, p.st, 0.5, () => +(p.s || 0).toFixed(1), v => { p.s = v; delete p.jam; commit(); }, unitSym('mm')),
+    num('hy.F', 'F', -1e6, 1e6, 10, unitSym('N')), num('hy.Fb', 'Fb', 0, 1e6, 10, unitSym('N')));
+  if (p.type === 'hmotor') out.push(num('hy.M', 'M', 0, 1e5, 0.1, unitSym('Nm')));
+  if (p.type !== 'hnode' || true) out.push(rowOf(btn(t('hy.lay'), () => { pipeDraft = { a: null, pts: [], cur: null }; sel = new Set(); ui(); })));
+  return out;
+}
+// a click while a pipe is being laid: a port starts or ends it, another pipe gets a tee, anything else is a corner
+function pipeClick(w) {
+  const r = Math.max(3.5, 10 / view.scale), port = portAt(w, r), d = pipeDraft;
+  if (d.a == null) { if (port) { d.a = port.p.id; d.pa = port.k; ui(); } return; }
+  const a = byId(d.a), done = (b, pb) => { const fromTank = a.type === 'htank' || b.type === 'htank'; addPipe(a, d.pa, b, pb, { pts: d.pts, d: 10, kind: fromTank ? 'return' : 'pressure', mat: a.type === 'hcyl' || b.type === 'hcyl' ? 'hose' : 'steel' }); pipeDraft = null; commit(); };
+  if (port && !(port.p.id === d.a && port.k === d.pa)) return done(port.p, port.k);
+  const hitP = pipeAt(w, r * 0.6); if (hitP) return done(pipeTee(hitP, a.layer), 0);
+  const last = d.pts.length ? { x: d.pts[d.pts.length - 1][0], y: d.pts[d.pts.length - 1][1] } : portPos(a, d.pa), sn = 5 / view.scale;   // keep runs square when the click is close to it
+  d.pts.push([Math.abs(w.x - last.x) < sn ? last.x : w.x, Math.abs(w.y - last.y) < sn ? last.y : w.y]);
+}
+
 /* ---------- pointer input ---------- */
 const pts = new Map(); let drag = null, pan = null, pinch = null, holdTimer = null;
 const pos = e => { const r = cv.getBoundingClientRect(); return { x: e.clientX - r.left, y: e.clientY - r.top }; };
 function hitTop(g, w) {
+  if (isHyd(g) && !isLink(g)) { const u = unit(g.dir || 0), dx = w.x - g.x, dy = w.y - g.y, lx = dx * u[0] + dy * u[1], ly = -dx * u[1] + dy * u[0]; return g.type === 'hvalve' ? Math.abs(lx) < 19 && Math.abs(ly) < 8 : g.type === 'hnode' ? Math.hypot(lx, ly) < 3.5 : g.type === 'htank' ? Math.abs(lx) < 8 && ly > -2 && ly < 9 : Math.hypot(lx, ly) < 10; }
   if (isLink(g)) return tmmHit(g, w, Math.max(3.2, 9 / view.scale)) != null;
   const b = boxOf(g);
   if (b) { const u = unit(g.dir), dx = w.x - g.x, dy = w.y - g.y, lx = dx * u[0] + dy * u[1], ly = -dx * u[1] + dy * u[0]; return g.type === 'rack' ? Math.abs(lx) <= b[0] && ly >= -1.25 * M - RB - 1 && ly <= M + 1 : g.type === 'hbevel' ? lx > -9 && lx < 14 && Math.abs(ly) <= b[1] : Math.abs(lx) <= b[0] && Math.abs(ly) <= b[1] + 1; }
@@ -511,6 +582,7 @@ cv.addEventListener('pointerdown', e => {
   if (pts.size === 2) { drag = pan = boxSel = null; const [a, b] = [...pts.values()]; pinch = { d: Math.hypot(a.x - b.x, a.y - b.y) || 1, scale: view.scale, w: toWorld((a.x + b.x) / 2, (a.y + b.y) / 2), side: (a.y + b.y) / 2 < bandH() }; return; }
   const side = p.y < bandH();
   if (side && p.x < 46) { const l = Math.floor((baseY() - p.y) / view.scale / LP + 0.2); if (l >= 0 && l < layerCount) { setActive(l); return; } }   // a layer's letter in the side view makes it active
+  if (pipeDraft) { if (!side) pipeClick(toWorld(p.x, p.y)); return; }
   const g = hit(p);
   if (linkDraft) { // building a belt or chain: clicks add and remove wheels
     if (g && g.type === (linkDraft.kind === 'belt' ? 'pulley' : 'sprocket') && g.layer === byId(linkDraft.ids[0]).layer) { const i = linkDraft.ids.indexOf(g.id); if (i < 0) linkDraft.ids.push(g.id); else if (linkDraft.ids.length > 1) linkDraft.ids.splice(i, 1); ui(); }
@@ -531,15 +603,18 @@ cv.addEventListener('pointerdown', e => {
     const w = toWorld(p.x, p.y), group = new Set(selParts());
     for (const q of [...group]) if (isShaft(q)) for (const c of onShaft(q)) group.add(c);   // a shaft takes what is keyed to it along
     if ([...group].some(q => !isShaft(q) && lockedLayers.has(q.layer))) return;              // unless a locked layer holds one of them
-    drag = { g, dx: w.x - g.x, dy: w.y - g.y, others: [...group].filter(q => q !== g && !q.mount).map(q => ({ q, ox: q.x - g.x, oy: q.y - g.y })), sx: p.x, sy: p.y, moved: false };
+    drag = { w0: w, g, dx: w.x - g.x, dy: w.y - g.y, others: [...group].filter(q => q !== g && !q.mount).map(q => ({ q, ox: q.x - g.x, oy: q.y - g.y })), sx: p.x, sy: p.y, moved: false };
     if (isLink(g)) { // which piece was taken: the far joint of a bar stretches and turns it, its first joint moves that end, anything else moves the link
-      const piece = tmmHit(g, w, Math.max(3.2, 9 / view.scale)), bar = BAR.includes(g.type), k = bar && piece === 1 ? 1 : bar && piece === 0 && g.type !== 'tcrank' ? 0 : null;
+      const piece = tmmHit(g, w, Math.max(3.2, 9 / view.scale)), bar = BAR.includes(g.type), k = bar && piece === 1 ? 1 : bar && piece === 0 && !ty(g, 'tcrank', 'hcyl') ? 0 : null;
       if (k != null) drag.others = [];
       drag.link = { k, far: bar ? jointPos(g, 1) : null, ids: [g.id, ...drag.others.map(o => o.q.id)] };
     }
     cv.classList.add('dragging');
   } else {
     if (g) pick([g.id]);
+    const hp = !g && !side && pipeAt(toWorld(p.x, p.y), Math.max(2, 6 / view.scale));
+    if (hp) { sel = new Set(); selPipe = hp.q.id; ui(); return; }
+    if (!g && selPipe != null) { selPipe = null; ui(); }
     pan = { sx: p.x, sy: p.y, cx: view.cx, cy: view.cy, moved: false, side, onPart: !!g };
     const startBox = () => { if (pan && !pan.moved && !side) { pan = null; boxSel = { x0: p.x, y0: p.y, x1: p.x, y1: p.y }; cv.classList.add('boxing'); } };
     if (e.shiftKey && !g) startBox(); else if (!g) holdTimer = setTimeout(startBox, 380);   // hold still, then drag, to select an area
@@ -548,6 +623,7 @@ cv.addEventListener('pointerdown', e => {
 cv.addEventListener('pointermove', e => {
   if (!pts.has(e.pointerId)) return;
   const p = pos(e); pts.set(e.pointerId, p);
+  if (pipeDraft) pipeDraft.cur = p.y < bandH() ? null : toWorld(p.x, p.y);
   if (pinch && pts.size === 2) {
     const [a, b] = [...pts.values()], mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
     view.scale = Math.max(0.5, Math.min(12, pinch.scale * Math.hypot(a.x - b.x, a.y - b.y) / pinch.d));
@@ -573,6 +649,7 @@ cv.addEventListener('pointermove', e => {
 function linkDrag(w) {
   const d = drag, g = d.g, L = d.link, skip = new Set(L.ids), near = Math.max(3, 9 / view.scale);
   if (!L.loose) { L.loose = true; tmmDetach(L.ids, L.k); }
+  if (L.k === 1 && g.type === 'hcyl') { const q = tmmSnap(g, w.x, w.y, 1, skip, near); g.s = Math.max(0, Math.min(g.st, Math.hypot(q.x - g.x, q.y - g.y) - CYL_L0(g))); g.len = CYL_L0(g) + g.s; g.dir = Math.atan2(q.y - g.y, q.x - g.x); delete g.jam; return; }   // pulling the rod sets the extension
   if (L.k === 1) { const q = tmmSnap(g, w.x, w.y, 1, skip, near), [lo, hi] = T(g).lim; g.len = Math.max(lo, Math.min(hi, +Math.hypot(q.x - g.x, q.y - g.y).toFixed(2))); g.dir = Math.atan2(q.y - g.y, q.x - g.x); return; }
   if (L.k === 0) { const q = tmmSnap(g, w.x, w.y, 0, skip, near), [lo, hi] = T(g).lim; g.x = q.x; g.y = q.y; g.len = Math.max(lo, Math.min(hi, +Math.hypot(L.far.x - q.x, L.far.y - q.y).toFixed(2))); g.dir = Math.atan2(L.far.y - q.y, L.far.x - q.x); return; }
   let q = { x: w.x - d.dx, y: w.y - d.dy };
@@ -606,6 +683,9 @@ const up = e => {
     const inside = parts.filter(g => canPick(g) && g.x >= a.x && g.x <= b.x && g.y >= a.y && g.y <= b.y).map(g => g.id);
     boxSel = null; cv.classList.remove('boxing'); pick(inside, e.shiftKey);
   } else if (pan && !pan.moved && !pan.onPart && sel.size) pick([]);
+  if (drag && !drag.moved && !drag.side && drag.g.type === 'hvalve') { // a click on one of the valve's boxes switches it there
+    const g = drag.g, u = unit(g.dir || 0), lx = (drag.w0.x - g.x) * u[0] + (drag.w0.y - g.y) * u[1]; g.pos = lx < -6 ? 1 : lx > 6 ? -1 : 0; commit();
+  }
   if (drag && drag.moved) { const g = drag.g; if (drag.link) tmmAttach(drag.link.ids); if (drag.mount) g.mount = drag.mount; else if (!drag.others.length) autoShaft(g); commit(); }
   drag = pan = null; if (pts.size < 2) pinch = null; cv.classList.remove('dragging');
 };
@@ -623,7 +703,7 @@ $('add').onclick = () => {
   const type = $('new-type').value, nt = TYPES[type];
   const g = addPart(type, { ...(nt.key ? { [nt.key]: +$('new-z').value } : {}), x: 0, y: 0, layer: activeLayer, ...(type === 'shaft' ? { l0: activeLayer, l1: Math.min(layerCount - 1, activeLayer + 1) } : {}) });
   Object.assign(g, freeSpot(tipR(g) + reach(g)));
-  if (!parts.some(p => p.motor) && !isLin(g) && !isLink(g) && !ty(g, 'carrier', 'brake', 'machine')) g.motor = { kind: 'speed', rpm: 60, tq: 2 };   // the first part on an empty bench gets the motor
+  if (!parts.some(p => p.motor) && !isLin(g) && !isLink(g) && !isHyd(g) && !ty(g, 'carrier', 'brake', 'machine')) g.motor = { kind: 'speed', rpm: 60, tq: 2 };   // the first part on an empty bench gets the motor
   sel = new Set([g.id]); commit();
 };
 $('tpl-add').onclick = () => { const c = toWorld(W / 2, topMid()); freeze(); const made = insertTemplate($('tpl').value, c.x, c.y); sel = new Set(made.map(p => p.id)); commit(); fit(); };
@@ -640,7 +720,8 @@ $('zoom-out').onclick = () => zoomAt(W / 2, topMid(), 1 / 1.3);
 for (const m of ['both', 'top', 'side']) $('vm-' + m).onclick = () => { viewMode = m; fit(); ui(); };
 addEventListener('keydown', e => {
   const typing = /INPUT|SELECT|TEXTAREA/.test(document.activeElement.tagName) && document.activeElement.type !== 'range';
-  if (e.key === 'Escape') { if (linkDraft) linkDraft = null; else sel = new Set(); ui(); return; }
+  if (e.key === 'Escape') { if (pipeDraft) pipeDraft = null; else if (linkDraft) linkDraft = null; else { sel = new Set(); selPipe = null; } ui(); return; }
+  if ((e.key === 'Delete' || e.key === 'Backspace') && selPipe != null && !sel.size) { e.preventDefault(); pipes = pipes.filter(q => q.id !== selPipe); selPipe = null; commit(); return; }
   if (typing) return;
   if (e.key === 'Enter' && linkDraft) finishLink();
   else if (e.key === ' ') { e.preventDefault(); running = !running; ui(); }
@@ -666,7 +747,10 @@ function start(d) {
     const dt = Math.min(0.05, Math.max(0, (ts - last) / 1000)); last = ts;
     if (running && !lockMsg) { // a mechanism that cannot follow its crank holds the whole bench at that instant
       const c0 = clock; clock += RPM * dt; place();
-      const ok = tmmStep(); if (!ok) { clock = c0; place(); }
+      const tk = hydTick(dt); let ok = tmmStep();
+      if (!ok && tk.undo.some(([q, s0]) => q.s !== s0)) { hydJam(tk.undo); tk.restep = true; ok = tmmStep(); }   // a cylinder ran the linkage to its limit: it stops there, the crank's time goes on
+      if (!ok) { clock = c0; place(); }
+      if (tk.restep) { hydroStep(); warnings = runChecks({ parts, power }); ui(); }
       if (ok === tmmStuck) { tmmStuck = !ok; ui(); }
       if (graphTick && ++frameNo % 4 === 0) graphTick();
     }

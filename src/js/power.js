@@ -11,8 +11,15 @@ const isDyn = m => !!m.kind && m.kind !== 'speed';
 const motorDir = m => Math.sign(isDyn(m) ? m.n : m.rpm) || 1;
 let power = { has: false, src: new Map(), load: new Map(), flow: new Map() }, warnings = [];
 
+/* Everything on the bench for the state it is in. The hydraulic network and the drive lean on each other: the pump's flow needs
+   the shaft speed, the shaft's load needs the pump pressure. A few passes settle it; the last network solution is the next start. */
 function solve() {
-  tmmLoads();
+  tmmLoads(); hydSync();
+  for (let pass = 0; pass < 5; pass++) { hydLoads(); solveDrive(); if (hydroStep() < 0.005) break; }
+  tmmStep(); tmmAnalyze();
+  warnings = runChecks({ parts, power });
+}
+function solveDrive() {
   const dyn = parts.filter(p => p.motor && isDyn(p.motor));
   for (const p of dyn) p.motor.rpm = p.motor.n;                 // a trial speed, only to read the ratios
   solveKin();
@@ -32,8 +39,6 @@ function solve() {
     for (const p of dyn) if (p.motor.follow) p.motor.rpm = p.w;
   }
   power = flows(ops);
-  tmmStep(); tmmAnalyze();
-  warnings = runChecks({ parts, power });
 }
 
 function flows(ops) {

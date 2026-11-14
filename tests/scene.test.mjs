@@ -26,7 +26,7 @@ test('save and load round trip keeps layers, names, locks, motors and loads', ()
     addPart('spur', { x: 60, y: 0, z: 40, label: 'Mixer', load: { kind: 'quad', tq: 30, n: 700, eta: 0.8 } });
     return serialize();
   });
-  assert.equal(saved.v, 4);
+  assert.equal(saved.v, 5);
   assert.deepEqual(saved.layers, [{ name: '', visible: false, locked: false }, { name: 'drive', visible: true, locked: false }, { name: '', visible: true, locked: true }]);
   const back = bench().run(d => { load(d); return { s: serialize(), locked: [...lockedLayers], names: layerNames }; }, saved);
   assert.deepEqual(back.s, saved); assert.deepEqual(back.locked, [2]); assert.equal(back.names[1], 'drive');

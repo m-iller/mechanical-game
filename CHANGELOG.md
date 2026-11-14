@@ -23,7 +23,9 @@ Gear Bench is growing from a drive sandbox into a rough-figures tool for mechani
 - **Cams**: a cam and a roller follower as links with a higher pair. Motion laws (cycloidal, harmonic, constant acceleration, constant speed), surface profile, pressure angle, base radius for α ≤ 30°, curvature check, follower graphs. Template "Cam drive of a valve".
 - **Structure of mechanisms**: redundant constraints by Malyshev's formula and the split into Assur groups.
 - **Planetary tooth numbers**: coaxial, neighbour and assembly conditions for the stage around a carrier, the profile shift needed below 17 teeth, and a picker that offers tooth numbers for a wanted ratio.
-- Core for pipes and hydraulics (not yet in the interface): fluid properties, friction and local losses for laminar and turbulent flow, recommended speeds, and a steady-state network solver with pump, pipe, throttle, relief and check valves, cylinder with end stops and hydraulic motor.
+- **Hydraulic drive**: tank, pump, hydraulic motor, cylinder, 4/3 directional valve switched by a click, throttle, check and relief valves, tee. Pipes are laid by clicks from port to port with corners; ending on another pipe makes a tee. The network is solved in steady state: flows, pressures, losses for laminar and turbulent flow, Reynolds number, recommended speeds.
+- **Flow on the bench**: pipe colour shows pressure with a legend, marks run along the line at the speed of the flow, an arrow shows its direction; a line with no flow stands still, and a relief valve dumping to the tank shows on the return line.
+- **Hydraulics meets mechanics**: the pump takes its speed from a shaft and loads the motor; a cylinder is a link of changing length in a mechanism and stops at its end or when the linkage can go no further. Templates "Pump, valve, cylinder" and "Excavator boom".
 
 ### Changed
 - Scenes are saved in format v3. Scenes from 2.x open and are migrated on load.

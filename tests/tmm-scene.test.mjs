@@ -62,7 +62,7 @@ test('a crank too long for its chain stops the mechanism instead of tearing it',
 test('save and load keep the pairs, and the crank where it stood', () => {
   const b = bench();
   const saved = b.run(() => { resetScene(1); const [c] = insertTemplate('slidercrank', 0, 0); solve(); clock = 0.5 / c.w; tmmStep(); return serialize(); });
-  assert.equal(saved.v, 4); assert.equal(saved.pairs.length, 3);
+  assert.equal(saved.v, 5); assert.equal(saved.pairs.length, 3);
   close(saved.parts[0].dir, Math.PI / 3 + 0.5, 1e-9);
   const back = bench().run(d => { load(d); solve(); return { ok: tmmInfo.ok, n: pairs.length, x: parts[3].x }; }, saved);
   assert.ok(back.ok); assert.equal(back.n, 3);

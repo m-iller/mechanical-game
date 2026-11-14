@@ -45,7 +45,7 @@ test('ports: only the same domain joins; a gas line on a hydraulic port is refus
 test('migrate: a v2 scene comes up to the current version with layer objects, motor kinds and an empty pair list', () => {
   const v2 = { v: 2, nextId: 3, layerCount: 3, outId: 2, hidden: [1], links: [], parts: [{ id: 1, name: 'G1', type: 'spur', x: 0, y: 0, layer: 0, z: 12, motor: { rpm: 120, tq: 2 } }, { id: 2, name: 'G2', type: 'spur', x: 36, y: 0, layer: 0, z: 24 }] };
   const d = core().run(s => migrate(s), v2);
-  assert.equal(d.v, 4); assert.deepEqual(d.pairs, []);
+  assert.equal(d.v, 5); assert.deepEqual(d.pairs, []); assert.deepEqual(d.pipes, []);
   assert.deepEqual(d.layers, [{ name: '', visible: true, locked: false }, { name: '', visible: false, locked: false }, { name: '', visible: true, locked: false }]);
   assert.deepEqual(d.parts[0].motor, { kind: 'speed', rpm: 120, tq: 2 });
   assert.equal(d.layerCount, undefined); assert.equal(d.outId, 2);

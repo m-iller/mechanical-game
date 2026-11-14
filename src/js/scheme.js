@@ -106,6 +106,7 @@ function tmmDraw(g, s) {
     case 'trod': case 'trocker': seg(0, 0, g.len, 0); break;
     case 'tcoul': seg(0, -1.8, g.len, -1.8, thin * 1.4); seg(0, 1.8, g.len, 1.8, thin * 1.4); seg(0, -1.8, 0, 1.8, thin * 1.4); seg(g.len, -1.8, g.len, 1.8, thin * 1.4); break;
     case 'tslider': box(8, 4.5); break;
+    case 'hcyl': hydCylDraw(g, s, col); break;
     case 'tstone': box(5.5, 3.6); break;
     case 'tplate': {
       ctx.beginPath(); js.forEach((q, k) => k ? ctx.lineTo(q[0], q[1]) : ctx.moveTo(q[0], q[1])); ctx.closePath();
@@ -130,4 +131,96 @@ function tmmOutline(g) {
   else if (g.type === 'tfollow') ctx.rect(-(g.rr || 0) - 3, -6.5, FOLLOW_L + (g.rr || 0) + 6, 13);
   else ctx.rect(-10.5, -7, 21, 14);
   ctx.stroke(); ctx.restore();
+}
+
+/* ---------- hydraulic drive, after GOST 2.781-96 (valves) and 2.782-96 (pumps, motors, cylinders) ---------- */
+// colour of a line by its pressure: blue at the tank, through green and amber, to red at the highest pressure on the bench
+const pColor = p => `hsl(${Math.round(215 - 215 * Math.max(0, Math.min(1, p / hyd.pmax)))}, 72%, 44%)`;
+function hydDraw(g, s) {
+  const col = collide.has(g.id) ? C.jam : C.ink, w = 2 / s, thin = 1 / s, r = hyd.part.get(g.id) || {};
+  ctx.save(); ctx.translate(g.x, g.y); ctx.rotate(g.dir || 0); ctx.strokeStyle = col; ctx.fillStyle = col; ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.lineWidth = w;
+  const seg = (x0, y0, x1, y1, lw = w) => { ctx.lineWidth = lw; ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x1, y1); ctx.stroke(); };
+  const tri = (x0, y0, x1, y1, x2, y2) => { ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x1, y1); ctx.lineTo(x2, y2); ctx.closePath(); ctx.fill(); };
+  const arrow = (x0, y0, x1, y1) => { seg(x0, y0, x1, y1, thin * 1.3); const a = Math.atan2(y1 - y0, x1 - x0), h = 2.4; tri(x1, y1, x1 - h * Math.cos(a - 0.45), y1 - h * Math.sin(a - 0.45), x1 - h * Math.cos(a + 0.45), y1 - h * Math.sin(a + 0.45)); };
+  const disc = rad => { ctx.beginPath(); ctx.arc(0, 0, rad, 0, TAU); ctx.fillStyle = C.paper; ctx.fill(); ctx.lineWidth = w; ctx.stroke(); ctx.fillStyle = col; };
+  switch (g.type) {
+    case 'htank': seg(0, 0, 0, 5); ctx.lineWidth = w; ctx.beginPath(); ctx.moveTo(-7, 1.5); ctx.lineTo(-7, 8); ctx.lineTo(7, 8); ctx.lineTo(7, 1.5); ctx.stroke(); break;
+    case 'hpump': case 'hmotor': {
+      seg(-11, 0, -8, 0); seg(8, 0, 11, 0); disc(8);
+      if (g.type === 'hpump') tri(8, 0, 3.6, -2.7, 3.6, 2.7); else tri(-3.6, 0, -8, -2.7, -8, 2.7);
+      const an = angle(g) - (g.dir || 0); seg(0, 0, 3.2 * Math.cos(an), 3.2 * Math.sin(an), thin);   // turns with the shaft
+      break;
+    }
+    case 'hrelief': {
+      seg(-9, 0, -6, 0); seg(6, 0, 9, 0); ctx.fillStyle = r.Q > 1e-7 ? C.brass : C.paper; ctx.fillRect(-6, -6, 12, 12); ctx.fillStyle = col; ctx.lineWidth = w; ctx.strokeRect(-6, -6, 12, 12);
+      arrow(-4.5, r.Q > 1e-7 ? 0 : -2.6, 4.5, r.Q > 1e-7 ? 0 : -2.6);                                // the arrow sits off the line while shut
+      ctx.lineWidth = thin; ctx.beginPath(); ctx.moveTo(0, -6); for (let i = 0; i < 5; i++) ctx.lineTo(i % 2 ? 1.8 : -1.8, -7 - i * 1.3); ctx.stroke();
+      ctx.setLineDash([1.5, 1.2]); ctx.beginPath(); ctx.moveTo(-7.5, 0); ctx.lineTo(-7.5, 8); ctx.lineTo(0, 8); ctx.lineTo(0, 6); ctx.stroke(); ctx.setLineDash([]);
+      break;
+    }
+    case 'hvalve': { // three boxes: P→A and B→T, all shut, P→B and A→T; the live one is filled
+      for (const [k, cx] of [[1, -12], [0, 0], [-1, 12]]) { ctx.fillStyle = (g.pos || 0) === k ? C.brass : C.paper; ctx.globalAlpha *= (g.pos || 0) === k ? 0.55 : 1; ctx.fillRect(cx - 6, -6, 12, 12); ctx.globalAlpha /= (g.pos || 0) === k ? 0.55 : 1; ctx.fillStyle = col; ctx.lineWidth = (g.pos || 0) === k ? w * 1.3 : thin * 1.3; ctx.strokeRect(cx - 6, -6, 12, 12); }
+      arrow(-16, 6, -16, -6); arrow(-8, -6, -8, 6); arrow(8, 6, 16, -6); arrow(8, -6, 16, 6);
+      for (const [px, py] of [[-4, 6], [4, 6], [-4, -6], [4, -6]]) { const iy = py > 0 ? 3 : -3; seg(px, py, px, iy, thin * 1.3); seg(px - 1.6, iy, px + 1.6, iy, thin * 1.3); seg(px, py, px, py > 0 ? 9 : -9); }
+      break;
+    }
+    case 'hthrottle': seg(-9, 0, 9, 0); ctx.lineWidth = w; ctx.beginPath(); ctx.arc(0, -7.5, 5.2, 0.25 * Math.PI, 0.75 * Math.PI); ctx.stroke(); ctx.beginPath(); ctx.arc(0, 7.5, 5.2, 1.25 * Math.PI, 1.75 * Math.PI); ctx.stroke(); arrow(-5, 5, 5, -5); break;
+    case 'hcheck': seg(-9, 0, -1.6, 0); seg(3.4, 0, 9, 0); seg(-4.5, -3.6, -0.6, -1.3, thin * 1.3); seg(-4.5, 3.6, -0.6, 1.3, thin * 1.3); ctx.beginPath(); ctx.arc(1.2, 0, 2.2, 0, TAU); ctx.fillStyle = C.paper; ctx.fill(); ctx.lineWidth = w; ctx.stroke(); break;
+    case 'hnode': ctx.beginPath(); ctx.arc(0, 0, 1.9, 0, TAU); ctx.fill(); break;
+  }
+  ctx.restore();
+  hydPorts(g, s);
+}
+// port marks; while a pipe is being laid they are rings to aim at
+function hydPorts(g, s) {
+  if (g.type === 'hnode') return;
+  portsOf(g).forEach((q, k) => { const P = portPos(g, k); ctx.beginPath(); ctx.arc(P.x, P.y, pipeDraft ? 2.6 : 1.3, 0, TAU); ctx.fillStyle = C.paper; ctx.fill(); ctx.strokeStyle = pipeDraft ? C.select : C.ink; ctx.lineWidth = (pipeDraft ? 1.6 : 1) / s; ctx.stroke(); });
+}
+// barrel, piston and rod of a cylinder in the link's frame (x from pin to pin); chambers tinted by their pressure
+function hydCylDraw(g, s, col) {
+  const L0 = CYL_L0(g), xp = 8 + (g.s || 0), w = 2 / s, r = hyd.part.get(g.id);
+  if (r && hyd.ok) { ctx.globalAlpha *= 0.4; ctx.fillStyle = pColor(r.pA); ctx.fillRect(3, -5, xp - 3, 10); ctx.fillStyle = pColor(r.pB); ctx.fillRect(xp, -5, L0 - 5 - xp, 10); ctx.globalAlpha /= 0.4; }
+  ctx.strokeStyle = col; ctx.lineWidth = w; ctx.strokeRect(3, -5, L0 - 8, 10);
+  ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(3, 0); ctx.moveTo(xp, -5); ctx.lineTo(xp, 5); ctx.stroke();
+  ctx.lineWidth = 2.6 / s; ctx.beginPath(); ctx.moveTo(xp, 0); ctx.lineTo(g.len, 0); ctx.stroke();
+  for (const q of portsOf(g)) { ctx.lineWidth = w; ctx.beginPath(); ctx.moveTo(q[1], 5); ctx.lineTo(q[1], 5.5); ctx.stroke(); }
+}
+/* Pipes of one layer in the top view. Line kinds after GOST 2.784-96: working lines solid, pilot lines long dashes, drain short dashes.
+   The line's colour is its pressure; light marks run along it at the speed of the flow and stand still where nothing flows. */
+function pipesDraw(layer, s) {
+  for (const q of pipes) {
+    const a = byId(q.a); if (!a || a.layer !== layer) continue;
+    const P = pipePath(q), r = hyd.pipe.get(q.id), lw = (2 + Math.min(3, q.d / 8)) / s, flow = r && hyd.ok && Math.abs(r.Q) > 1e-8;
+    const path = () => { ctx.beginPath(); P.forEach((v, i) => i ? ctx.lineTo(v.x, v.y) : ctx.moveTo(v.x, v.y)); };
+    ctx.save(); ctx.lineJoin = 'round'; ctx.lineCap = 'butt';
+    if (selPipe === q.id) { ctx.strokeStyle = C.select; ctx.lineWidth = lw + 4 / s; path(); ctx.stroke(); }
+    ctx.strokeStyle = r && hyd.ok ? pColor((r.pa + r.pb) / 2) : C.muted; ctx.lineWidth = lw; ctx.globalAlpha *= flow ? 1 : 0.6;
+    ctx.setLineDash(q.kind === 'pilot' ? [8 / s, 4 / s] : q.kind === 'drain' ? [3 / s, 3 / s] : []); path(); ctx.stroke(); ctx.setLineDash([]);
+    if (flow) { // running marks and an arrowhead in the direction of the flow
+      ctx.strokeStyle = C.paper; ctx.lineWidth = lw * 0.5; ctx.setLineDash([3 / s, 9 / s]); ctx.lineDashOffset = -(q.ph || 0) * 60 / s; path(); ctx.stroke(); ctx.setLineDash([]);
+      let best = 1, bl = 0; for (let i = 1; i < P.length; i++) { const L = Math.hypot(P[i].x - P[i - 1].x, P[i].y - P[i - 1].y); if (L > bl) { bl = L; best = i; } }
+      const A = P[best - 1], B = P[best], sg = r.Q > 0 ? 1 : -1, an = Math.atan2((B.y - A.y) * sg, (B.x - A.x) * sg), mx = (A.x + B.x) / 2, my = (A.y + B.y) / 2, h = 7 / s;
+      ctx.fillStyle = ctx.strokeStyle = pColor((r.pa + r.pb) / 2); ctx.beginPath(); ctx.moveTo(mx + h * Math.cos(an), my + h * Math.sin(an)); ctx.lineTo(mx + h * 0.8 * Math.cos(an + 2.5), my + h * 0.8 * Math.sin(an + 2.5)); ctx.lineTo(mx + h * 0.8 * Math.cos(an - 2.5), my + h * 0.8 * Math.sin(an - 2.5)); ctx.closePath(); ctx.fill();
+    }
+    ctx.restore();
+  }
+  if (pipeDraft && pipeDraft.a != null && byId(pipeDraft.a).layer === layer) { // the pipe being laid
+    const a = portPos(byId(pipeDraft.a), pipeDraft.pa), P = [a, ...pipeDraft.pts.map(v => ({ x: v[0], y: v[1] })), ...(pipeDraft.cur ? [pipeDraft.cur] : [])];
+    ctx.save(); ctx.strokeStyle = C.select; ctx.lineWidth = 2 / s; ctx.setLineDash([5 / s, 3 / s]); ctx.beginPath(); P.forEach((v, i) => i ? ctx.lineTo(v.x, v.y) : ctx.moveTo(v.x, v.y)); ctx.stroke(); ctx.restore();
+  }
+}
+// pipes in the side view: from port to port across the layers
+function pipesSide(s) {
+  for (const q of pipes) {
+    const a = byId(q.a), b = byId(q.b); if (!a || !b) continue; const P = pipePath(q), r = hyd.pipe.get(q.id), za = a.layer * LP + FW / 2, zb = b.layer * LP + FW / 2;
+    ctx.strokeStyle = r && hyd.ok ? pColor((r.pa + r.pb) / 2) : C.muted; ctx.lineWidth = 1.6 / s; ctx.globalAlpha = 0.85;
+    ctx.beginPath(); P.forEach((v, i) => { const z = i === P.length - 1 ? zb : za; i ? ctx.lineTo(v.x, -z) : ctx.moveTo(v.x, -z); }); ctx.stroke(); ctx.globalAlpha = 1;
+  }
+}
+// pressure scale, in screen space
+function hydLegend(x, y) {
+  if (!hyd.has || !pipes.length) return;
+  const w = 120, g = ctx.createLinearGradient(x, 0, x + w, 0); for (let i = 0; i <= 6; i++) g.addColorStop(i / 6, pColor(hyd.pmax * i / 6));
+  ctx.fillStyle = g; ctx.fillRect(x, y, w, 7); ctx.strokeStyle = C.ink; ctx.lineWidth = 1; ctx.strokeRect(x, y, w, 7);
+  ctx.font = `11px ${C.mono}`; ctx.textBaseline = 'top'; ctx.fillStyle = C.ink; ctx.textAlign = 'left'; ctx.fillText('0', x, y + 10); ctx.textAlign = 'right'; ctx.fillText(fmtU(hyd.pmax, 'bar'), x + w, y + 10);
 }

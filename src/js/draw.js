@@ -111,6 +111,7 @@ function drawTop(dpr, s, bh) {
   const dot = (x, y, r, f) => { ctx.fillStyle = f; ctx.beginPath(); ctx.arc(x, y, r, 0, TAU); ctx.fill(); };
   const part = g => {
     if (isLink(g)) { tmmDraw(g, s); return; }       // links of mechanisms are always scheme symbols
+    if (isHyd(g)) { hydDraw(g, s); return; }        // and so are hydraulic parts
     if (schemeMode && schemePart(g, s)) return;   // kinematic-scheme symbol instead of the drawn shape
     const bad = collide.has(g.id), ink = bad ? C.jam : C.ink, lw = (bad ? 2 : 1.2) / s, fill = fillOf(g), sh = g.layer > 0, main = g.motor ? C.brass : fill, an = angle(g);
     // draw in the part's own frame: origin at its centre, x axis along its direction
@@ -254,6 +255,8 @@ function drawTop(dpr, s, bh) {
   const layerParts = l => {
     for (const g of parts) if (g.layer === l && !isShaft(g)) part(g);
     for (const L of links) { const w = byId(L.ids[0]); if (w && w.layer === l) drawLinkTop(L); }
+    pipesDraw(l, s);
+    for (const g of parts) if (g.layer === l && g.type === 'hcyl') hydPorts(g, s);
   };
   // layers other than the active one are painted on a second canvas and laid over as one faded sheet
   const faded = ls => {
@@ -303,6 +306,7 @@ function drawTop(dpr, s, bh) {
   }
   ctx.globalAlpha = 1;
   if (showDims) for (const m of meshes) if (shown(m.a) && shown(m.b) && isVert(m.a)) text(`a ${dist(m.a, m.b).toFixed(dist(m.a, m.b) % 1 ? 1 : 0)}`, X((m.a.x + m.b.x) / 2), Y((m.a.y + m.b.y) / 2), C.select);
+  hydLegend(W - 136, bh + 30);
   if (boxSel) { ctx.strokeStyle = C.select; ctx.lineWidth = 1; ctx.setLineDash([5, 3]); ctx.strokeRect(boxSel.x0, boxSel.y0, boxSel.x1 - boxSel.x0, boxSel.y1 - boxSel.y0); ctx.setLineDash([]); ctx.globalAlpha = 0.08; ctx.fillStyle = C.select; ctx.fillRect(boxSel.x0, boxSel.y0, boxSel.x1 - boxSel.x0, boxSel.y1 - boxSel.y0); ctx.globalAlpha = 1; }
   ctx.restore();
 }
@@ -360,6 +364,7 @@ function drawSide(dpr, s, bh) {
   for (const g of order) {
     if (isShaft(g)) continue;
     dim(g.layer);
+    if (isHyd(g) && !isLink(g)) { rect(g.x, g.type === 'hvalve' ? 18 : g.type === 'hnode' ? 2.5 : 9, g.layer * LP + 1.5, g.layer * LP + FW - 1.5, fillOf(g), C.ink); if (sel.has(g.id)) { ctx.strokeStyle = C.select; ctx.lineWidth = 2 / s; ctx.strokeRect(g.x - 11, -(g.layer * LP + FW), 22, FW); } continue; }
     if (isLink(g)) { // a link is a thin plate over the span of its joints
       const xs = g.type === 'guide' ? [g.x - Math.abs(Math.cos(g.dir)) * g.len / 2, g.x + Math.abs(Math.cos(g.dir)) * g.len / 2] : jointsOf(g).map((_, k) => jointPos(g, k).x), lo = Math.min(...xs), hi = Math.max(...xs), hw = Math.max(SLIDES.includes(g.type) ? 8 : 2.5, (hi - lo) / 2);
       rect((lo + hi) / 2, hw, g.layer * LP + 3, g.layer * LP + FW - 3, g.type === 'pivot' || g.type === 'guide' ? C.muted : fillOf(g), C.ink);
@@ -438,7 +443,7 @@ function drawSide(dpr, s, bh) {
     const z0 = belt ? zb + 2.2 : zb + 3.2, z1 = belt ? zb + FW - 2.2 : zb + 6.8;
     ctx.fillStyle = C.ink; ctx.globalAlpha *= belt ? 0.85 : 0.5; ctx.fillRect(xa, -z1, xb - xa, z1 - z0);
   }
-  ctx.globalAlpha = 1;
+  ctx.globalAlpha = 1; pipesSide(s);
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   ctx.font = `500 12px ${C.mono}`; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
   for (let l = 0; l < layerCount; l++) { const y = by - (l * LP + FW / 2) * s; ctx.strokeStyle = C.paper; ctx.lineWidth = 4; const lb = layerLabel(l) + (lockedLayers.has(l) ? ' ⊘' : ''); ctx.strokeText(lb, 10, y); ctx.fillStyle = l === activeLayer ? C.select : C.muted; ctx.fillText(lb, 10, y); }

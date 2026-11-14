@@ -92,6 +92,29 @@ s = await state(); if (s.lock || s.warnings.length) fail('valve demo: ' + s.lock
 const lift = await page.evaluate(() => { const [c, f] = parts; return Math.hypot(f.x - c.x, f.y - c.y) - c.r - f.rr; });
 if (!(lift >= -1e-6 && lift <= 8 + 1e-6) || await page.locator('canvas.graphs').count() !== 1) fail('valve demo: lift ' + lift);
 
+// hydraulics: a click on the valve's box drives the cylinder; the excavator arm moves and shows flow
+await page.evaluate(() => { resetScene(2); insertTemplate('hydro', 0, 0); solve(); viewMode = 'top'; fit(); setActive(1); });
+const boxOf = (dx) => page.evaluate(dx => { const g = parts.find(p => p.type === 'hvalve'), r = cv.getBoundingClientRect(); return { x: r.left + W / 2 + (g.x + dx - view.cx) * view.scale, y: r.top + topMid() + (g.y - view.cy) * view.scale }; }, dx);
+let bx = await boxOf(-12); await page.mouse.click(bx.x, bx.y); await page.waitForTimeout(600);
+let hs = await page.evaluate(() => { const c = parts.find(p => p.type === 'hcyl'); return { pos: parts.find(p => p.type === 'hvalve').pos, s: c.s, ok: hyd.ok, stuck: tmmStuck }; });
+if (hs.pos !== 1 || !(hs.s > 4) || !hs.ok || hs.stuck) fail('valve click did not drive the cylinder: ' + JSON.stringify(hs));
+bx = await boxOf(0); await page.mouse.click(bx.x, bx.y); await page.waitForTimeout(150);
+const s1 = await page.evaluate(() => parts.find(p => p.type === 'hcyl').s); await page.waitForTimeout(200);
+if (Math.abs(await page.evaluate(() => parts.find(p => p.type === 'hcyl').s) - s1) > 1e-9) fail('a closed valve does not hold the cylinder');
+// laying a pipe by clicks: port, corner, port
+await page.evaluate(() => { const n = pipes.length; pipes = pipes.filter(q => !(byId(q.a).type === 'hrelief')); pipeDraft = { a: null, pts: [], cur: null }; ui(); });
+const portXY = (type, k) => page.evaluate(([type, k]) => { const g = parts.filter(p => p.type === type).pop(), q = portPos(g, k), r = cv.getBoundingClientRect(); return { x: r.left + W / 2 + (q.x - view.cx) * view.scale, y: r.top + topMid() + (q.y - view.cy) * view.scale }; }, [type, k]);
+const pa = await portXY('hrelief', 1), pb = await portXY('htank', 0);
+await page.mouse.click(pa.x, pa.y); await page.mouse.click(pa.x, pb.y - 30); await page.mouse.click(pb.x, pb.y); await page.waitForTimeout(100);
+hs = await page.evaluate(() => ({ n: pipes.length, last: pipes[pipes.length - 1], draft: pipeDraft, ok: hyd.ok }));
+if (hs.n !== 7 || hs.draft || hs.last.pts.length !== 1 || hs.last.kind !== 'return' || !hs.ok) fail('laying a pipe by clicks: ' + JSON.stringify(hs));
+await page.evaluate(() => { resetScene(2); insertTemplate('excavator', 0, 0); solve(); viewMode = 'top'; fit(); setActive(1); });
+await page.waitForTimeout(700);
+s = await state(); if (s.lock || s.warnings.some(w => w[0] !== 'info')) fail('excavator demo: ' + s.lock + JSON.stringify(s.warnings));
+if (!(await page.evaluate(() => pipes.some(q => Math.abs(q.ph) > 0.01)))) fail('excavator demo: no flow marks are moving');
+if (process.env.SHOT_EXC) await page.screenshot({ path: process.env.SHOT_EXC });
+await page.evaluate(() => { viewMode = 'both'; });
+
 // power balance: the conveyor demo runs, shows explained figures, and the "where from" box opens
 await page.evaluate(() => { resetScene(5); const m = insertTemplate('conveyor', 0, 0); solve(); fit(); pick([m[m.length - 1].id]); });
 await page.waitForTimeout(60);

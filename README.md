@@ -49,6 +49,8 @@ The branch `engineering-tool` turns the sandbox into a tool for quick estimates,
 - The train runs at the speed where the motor's torque equals the load torques reduced to its shaft. Torque and power at each part follow the power passing through it.
 - Click an underlined figure to see **where it comes from**: the formula, the numbers and the assumptions.
 - The top view is a **kinematic scheme** with symbols after GOST 2.770-68; the "Scheme" button switches to drawn parts and back.
+- **Mechanisms from links**: crank, rod, rocker, slider, slotted link, cam and follower. Pairs appear where joints are dropped together. Graphs over a turn of the crank, forces, flywheel.
+- **Hydraulic drive**: pump, valves, cylinders and motors joined by pipes, with the flow and the pressure shown on the lines.
 - **Warnings** tell when a model is outside its range: stall, overload, undercut and others.
 
 ## What it shows
@@ -89,7 +91,9 @@ The app is plain HTML, CSS and JavaScript with no runtime dependencies. `main.js
 | `src/js/paths.js` | part outlines, belt and chain routing |
 | `src/js/solver.js` | kinematics: speeds, tooth phases, locks |
 | `src/js/power.js` | operating point of each train, power flow, applicability checks |
-| `src/js/scheme.js` | kinematic-scheme symbols for the top view |
+| `src/js/domains/tmm/` | mechanisms: linkage solver, cams, links on the bench, cycle analysis, panel |
+| `src/js/domains/pipes/`, `hydro/` | pipe losses, hydraulic network solver, hydraulics on the bench |
+| `src/js/scheme.js` | scheme symbols: drives, links, hydraulics, pipes |
 | `src/js/draw.js` | top and side views |
 | `src/js/templates.js` | ready-made assemblies and the opening example |
 | `src/js/ui.js` | panel, pointer and keyboard input |

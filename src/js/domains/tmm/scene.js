@@ -6,7 +6,7 @@
 'use strict';
 
 const FOLLOW_L = 34;
-const BAR = ['tcrank', 'trod', 'trocker', 'tcoul'], SLIDES = ['tslider', 'tstone'], RAILS = ['guide', 'tcoul'];
+const BAR = ['tcrank', 'trod', 'trocker', 'tcoul', 'hcyl'], SLIDES = ['tslider', 'tstone'], RAILS = ['guide', 'tcoul'];
 // links whose pose is given rather than solved: the frame, the driven links, and a follower riding a cam
 const camOf = p => { const q = pairs.find(x => x.type === 'H' && x.b === p.id); return q ? byId(q.a) : null; };
 const linkFixed = p => ty(p, 'pivot', 'guide', 'tcrank', 'tcam') || (p.type === 'tfollow' && !!camOf(p));

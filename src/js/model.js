@@ -53,20 +53,33 @@ const TYPES = {
   tcam:     { pre: 'L',  grp: 'tmm',    key: 'r',   lim: [5, 300, 0.5], def: 20, key2: 'h', lim2: [1, 100], dir: 1 },   // plate cam: base radius and lift; turns like a crank
   tfollow:  { pre: 'L',  grp: 'tmm',    key: 'rr',  lim: [0, 30, 0.5], def: 4, dir: 1 },                           // translating follower with a roller
   tplate:   { pre: 'L',  grp: 'tmm',    key: 'r',   lim: [4, 500, 1], def: 20, key2: 'n', lim2: [3, 8], dir: 1 },   // rigid link with n joints
+  /* hydraulic drive. Ports are points in the part's own frame (domains/hydro/scene.js); pipes join them.
+     The pump and the motor are turned by, or turn, the shaft through their centre. The cylinder is a link whose length the oil sets. */
+  htank:    { pre: 'T',  grp: 'hyd', dir: 1 },
+  hpump:    { pre: 'HP', grp: 'hyd', key: 'q',    lim: [1, 500, 0.5], def: 16, dir: 1 },             // displacement, cm³ per turn
+  hmotor:   { pre: 'HM', grp: 'hyd', key: 'q',    lim: [1, 2000, 0.5], def: 32, dir: 1 },
+  hrelief:  { pre: 'RV', grp: 'hyd', key: 'pset', lim: [5, 400, 1], def: 160, dir: 1 },             // setting, bar
+  hvalve:   { pre: 'DV', grp: 'hyd', key: 'dn',   lim: [1, 40, 0.5], def: 6, dir: 1 },              // 4/3 directional valve, nominal bore, mm
+  hthrottle:{ pre: 'TH', grp: 'hyd', key: 'dn',   lim: [0.2, 30, 0.1], def: 2, dir: 1 },            // orifice diameter, mm
+  hcheck:   { pre: 'CV', grp: 'hyd', key: 'dn',   lim: [1, 40, 0.5], def: 6, dir: 1 },
+  hnode:    { pre: 'J',  grp: 'hyd' },                                                               // tee: a point where pipes meet
+  hcyl:     { pre: 'CY', grp: 'hyd', key: 'd',    lim: [10, 400, 1], def: 40, key2: 'st', lim2: [10, 1500], dir: 1 },   // bore and stroke, mm
   crank:    { pre: 'K',  grp: 'mech',   key: 'r',   lim: [3, 150, 1], def: 14, key2: 'l', lim2: [10, 600], dir: 1 },
   cam:      { pre: 'CM', grp: 'mech',   key: 'h',   lim: [1, 40, 1], def: 8,  dir: 1 },
   geneva:   { pre: 'GV', grp: 'mech',   key: 'z',   lim: [4, 24, 1], def: 4,  dir: 1 },
   ratchet:  { pre: 'RT', grp: 'mech',   key: 'z',   lim: [6, 200, 1], def: 16, tog: 1 },
 };
-const GROUPS = ['io', 'gears', 'flex', 'shafts', 'tmm', 'mech'];
+const GROUPS = ['io', 'gears', 'flex', 'shafts', 'tmm', 'hyd', 'mech'];
 // a small catalogue motor (0.37 kW, 4 poles) and a machine that takes a constant 2 N·m
-const DEFAULTS = { emotor: { motor: { kind: 'induction', P: 370, n: 1320, ks: 2.2, km: 2.2, rpm: 1320, tq: 2.7 } }, machine: { load: { kind: 'const', tq: 2, n: 1000, eta: 0.9 } }, carrier: { n: 3 }, tplate: { n: 3 }, tcam: { h: 8 }, crank: { l: 40 }, ring: { loose: true }, clutch: { on: true }, brake: { on: true }, ratchet: { on: false } };
-const PROPS = ['z', 'zw', 'd', 'r', 'n', 'l', 'h', 'len', 'l0', 'l1', 'dir', 'on', 'loose', 'held', 'label', 'F', 'fw', 'm', 'J', 'rr', 'law', 'b1', 'bd', 'b2'];
+const DEFAULTS = { emotor: { motor: { kind: 'induction', P: 370, n: 1320, ks: 2.2, km: 2.2, rpm: 1320, tq: 2.7 } }, machine: { load: { kind: 'const', tq: 2, n: 1000, eta: 0.9 } }, carrier: { n: 3 }, tplate: { n: 3 }, tcam: { h: 8 }, hcyl: { st: 60, s: 0, F: 0 }, hvalve: { pos: 0 }, crank: { l: 40 }, ring: { loose: true }, clutch: { on: true }, brake: { on: true }, ratchet: { on: false } };
+const PROPS = ['z', 'zw', 'd', 'r', 'n', 'l', 'h', 'len', 'l0', 'l1', 'dir', 'on', 'loose', 'held', 'label', 'F', 'fw', 'm', 'J', 'rr', 'law', 'b1', 'bd', 'b2', 'q', 'pset', 'dn', 'pos', 'st', 's', 'dr', 'M', 'Fb'];
 const MOTOR_KEYS = ['kind', 'rpm', 'tq', 'P', 'n', 'ks', 'km'], LOAD_KEYS = ['kind', 'tq', 'n', 'eta', 'table'];
 const pickKeys = (o, keys) => { const r = {}; for (const k of keys) if (o[k] != null) r[k] = Array.isArray(o[k]) ? o[k].map(x => Array.isArray(x) ? x.slice() : x) : o[k]; return r; };
 
 /* ---------- scene state ---------- */
 let parts = [], links = [], nextId = 1;
+let pipes = [], pipeDraft = null, selPipe = null;   // pipes: { id, a, pa, b, pb, pts: [[x, y]…], d, kind, fluid, mat } between ports of parts
+let sceneGen = 0;                             // goes up whenever a whole scene is replaced, so the panel knows its cards are stale
 let pairs = [];                              // kinematic pairs between links: { id, type: 'R' | 'P' | 'F', a, ja, b, jb, turn }
 let layerCount = 3, activeLayer = 0, hiddenLayers = new Set();
 let lockedLayers = new Set(), layerNames = [], soloActive = false;   // soloActive: show the active layer alone
@@ -81,9 +94,11 @@ const ty = (p, ...names) => names.includes(p.type);
 const T = p => TYPES[p.type];
 const isShaft = p => p.type === 'shaft';
 const isHz = p => !!T(p).hz, isLin = p => !!T(p).lin;
-const isLink = p => T(p).grp === 'tmm';              // a link of a mechanism
+const isLink = p => T(p).grp === 'tmm' || p.type === 'hcyl';   // a link of a mechanism; a cylinder is a link of changing length
+const isHyd = p => T(p).grp === 'hyd';
+const hydStill = p => isHyd(p) && !ty(p, 'hpump', 'hmotor', 'hcyl');   // hydraulic parts that do not turn
 const isDriver = p => p.type === 'tcrank' || p.type === 'tcam';   // links the drive solver turns
-const isVert = p => !isHz(p) && !isLin(p) && (!isLink(p) || isDriver(p));   // turns about a vertical axis
+const isVert = p => !isHz(p) && !isLin(p) && (!isLink(p) || isDriver(p)) && !hydStill(p);   // turns about a vertical axis
 const kind = p => ty(p, 'spur', 'ring', 'diff') ? 'gear' : p.type === 'fric' ? 'fric' : null;
 const byId = id => parts.find(p => p.id === id);
 const mod = (a, n) => ((a % n) + n) % n;
@@ -111,11 +126,14 @@ const RO = p => {
     case 'ring': return M * meshZ(p) / 2;
     case 'pulley': case 'fric': case 'flywheel': case 'clutch': case 'brake': case 'emotor': case 'machine': return p.d / 2;
     case 'sprocket': return p.z * CP / TAU;
+    case 'htank': case 'hpump': case 'hmotor': case 'hrelief': case 'hthrottle': case 'hcheck': return 9;
+    case 'hvalve': return 18;
+    case 'hnode': return 2.5;
     case 'carrier': return HUB;
     case 'crank': return p.r + 4;
     case 'cam': return CB + p.h;
     case 'geneva': return GA + 3;
-    case 'shaft': case 'pivot': case 'guide': case 'tcrank': case 'trod': case 'trocker': case 'tslider': case 'tcam': case 'tfollow': case 'tcoul': case 'tstone': case 'tplate': return 3;
+    case 'shaft': case 'pivot': case 'guide': case 'tcrank': case 'trod': case 'trocker': case 'hcyl': case 'tslider': case 'tcam': case 'tfollow': case 'tcoul': case 'tstone': case 'tplate': return 3;
     case 'rack': case 'worm': case 'hshaft': return 0;
     default: return M * p.z / 2;
   }
@@ -154,7 +172,7 @@ function removeParts(ids) {
   const gone = new Set(ids);
   parts = parts.filter(p => !gone.has(p.id));
   for (const p of parts) if (p.mount && gone.has(p.mount.c)) delete p.mount;
-  pairs = pairs.filter(q => !gone.has(q.a) && !gone.has(q.b));
+  pairs = pairs.filter(q => !gone.has(q.a) && !gone.has(q.b)); pipes = pipes.filter(q => !gone.has(q.a) && !gone.has(q.b));
   for (const L of links) L.ids = L.ids.filter(id => !gone.has(id));
   links = links.filter(L => L.ids.length >= 2);
   for (const id of gone) sel.delete(id);
@@ -238,7 +256,7 @@ const shown = p => isShaft(p) ? [...Array(p.l1 - p.l0 + 1)].some((_, i) => layer
 
 // an empty bench with n layers
 function resetScene(n = 3) {
-  parts = []; links = []; pairs = []; nextId = 1; sel = new Set(); linkDraft = null; outId = null; clock = 0;
+  sceneGen++; parts = []; links = []; pairs = []; pipes = []; pipeDraft = null; selPipe = null; nextId = 1; sel = new Set(); linkDraft = null; outId = null; clock = 0;
   layerCount = n; activeLayer = 0; hiddenLayers = new Set(); lockedLayers = new Set(); layerNames = []; soloActive = false;
 }
 
@@ -248,6 +266,7 @@ function serialize() {
     layers: [...Array(layerCount)].map((_, l) => ({ name: layerNames[l] || '', visible: !hiddenLayers.has(l), locked: lockedLayers.has(l) })),
     links: links.map(L => ({ id: L.id, kind: L.kind, ids: L.ids, crossed: L.crossed, free: linkPos(L) })),
     pairs: pairs.map(q => ({ ...q })),
+    pipes: pipes.map(q => ({ id: q.id, a: q.a, pa: q.pa, b: q.b, pb: q.pb, pts: q.pts.map(v => v.slice()), d: q.d, kind: q.kind, fluid: q.fluid, mat: q.mat })),
     parts: parts.map(p => {
       const o = { id: p.id, name: p.name, type: p.type, x: p.x, y: p.y, layer: p.layer, free: angle(p) };
       for (const k of PROPS) if (p[k] != null) o[k] = p[k];
@@ -262,10 +281,12 @@ function serialize() {
 }
 function load(d) {
   d = migrate(d); if (!d) throw new Error('unreadable scene');
+  sceneGen++;
   const ls = d.layers || [];
   parts = d.parts.filter(o => TYPES[o.type]).map(make);
   links = (d.links || []).map(L => ({ id: L.id, kind: L.kind, ids: L.ids.slice(), crossed: !!L.crossed, free: L.free || 0, phase: L.free || 0, w: 0 }));
   pairs = (d.pairs || []).filter(q => byId(q.a) && byId(q.b)).map(q => ({ ...q }));
+  pipes = (d.pipes || []).filter(q => byId(q.a) && byId(q.b)).map(q => ({ ...q, pts: (q.pts || []).map(v => v.slice()), ph: 0 })); pipeDraft = null; selPipe = null;
   nextId = d.nextId; outId = d.outId != null ? d.outId : null; showDims = !!d.showDims;
   layerCount = Math.min(MAXL, Math.max(1, ls.length, ...parts.map(p => (isShaft(p) ? p.l1 : p.layer) + 1)));
   const flag = k => new Set(ls.map((L, l) => L[k] ? l : -1).filter(l => l >= 0));

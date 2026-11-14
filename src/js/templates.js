@@ -79,6 +79,38 @@ const TEMPLATES = {
     const f = addPart('tfollow', { x, y: y - 23, layer: L, rr: 5, dir: -Math.PI / 2 });
     tmmAttach([f.id]); return [c, f];
   } },
+  /* hydraulic drive: motor, pump, relief valve, 4/3 directional valve, cylinder pushing a slider. Click the valve's boxes to drive it. */
+  hydro: { layers: 2, build(x, y, L) {
+    const H = L + 1, out = [addPart('emotor', { x, y, layer: L, motor: { kind: 'induction', P: 550, n: 1390, ks: 2.2, km: 2.2, rpm: 1390, tq: 3.8 } }), addPart('shaft', { x, y, l0: L, l1: H })];
+    const pump = addPart('hpump', { x, y, layer: H, q: 2, dir: -Math.PI / 2 }), tank = addPart('htank', { x, y: y + 30, layer: H }), tank2 = addPart('htank', { x: x + 48, y: y + 30, layer: H });
+    const rv = addPart('hrelief', { x: x + 30, y: y - 20, layer: H, pset: 100, dir: Math.PI / 2 }), dv = addPart('hvalve', { x, y: y - 50, layer: H, dn: 6, pos: 0 });
+    const cy = addPart('hcyl', { x: x - 40, y: y - 80, layer: H, d: 40, st: 60, s: 0, F: 8000, Fb: 2000, dir: 0 }), pv = addPart('pivot', { x: x - 40, y: y - 80, layer: H, dir: Math.PI });
+    const g = addPart('guide', { x: x + 70, y: y - 80, layer: H, len: 110, dir: 0 }), sl = addPart('tslider', { x: x + 36, y: y - 80, layer: H, dir: 0 });
+    hydSync(); tmmAttach([cy.id, sl.id]);
+    addPipe(tank, 0, pump, 0, { d: 16, kind: 'suction' }); addPipe(pump, 1, dv, 0, { d: 8, pts: [[x, y - 30], [x - 4, y - 30]] }); addPipe(pump, 1, rv, 0, { d: 8, pts: [[x + 30, y - 11]] });
+    addPipe(rv, 1, tank2, 0, { d: 10, kind: 'return', pts: [[x + 30, y + 20], [x + 48, y + 20]] }); addPipe(dv, 1, tank2, 0, { d: 10, kind: 'return', pts: [[x + 48, y - 41]] });
+    addPipe(dv, 2, cy, 0, { d: 8, pts: [[x - 35, y - 59]] }); addPipe(dv, 3, cy, 1, { d: 8, pts: [[x + 28, y - 59]] });
+    out.push(pump, tank, tank2, rv, dv, cy, pv, g, sl); return out;
+  } },
+  /* excavator arm: one pump feeds two directional valves; the boom cylinder swings the boom (a three-joint link) about its
+     foot, the stick cylinder swings the stick on the boom's end. Click the valves' boxes to move them. */
+  excavator: { layers: 2, build(x, y, L) {
+    const H = L + 1, out = [addPart('emotor', { x: x - 70, y: y + 110, layer: L, motor: { kind: 'induction', P: 550, n: 1390, ks: 2.2, km: 2.2, rpm: 1390, tq: 3.8 } }), addPart('shaft', { x: x - 70, y: y + 110, l0: L, l1: H })];
+    const foot = addPart('pivot', { x, y, layer: H }), boom = addPart('tplate', { x, y, layer: H, r: 40, n: 3, dir: -1 }), J1 = jointPos(boom, 1), J2 = jointPos(boom, 2);
+    const stick = addPart('trocker', { x: J1.x, y: J1.y, layer: H, len: 60, dir: -0.6 }), tip = jointPos(stick, 1), heel = addPart('pivot', { x: x + 55, y: y + 38, layer: H });
+    const cyl = (a, b, F, Fb) => { const d = Math.hypot(b.x - a.x, b.y - a.y); return addPart('hcyl', { x: a.x, y: a.y, layer: H, d: 40, st: 40, s: d - 56, F, Fb, dir: Math.atan2(b.y - a.y, b.x - a.x) }); };
+    const c1 = cyl(heel, J2, 6000, 1500), c2 = cyl(J2, tip, 3000, 800);
+    hydSync(); tmmAttach([boom.id, stick.id, c1.id, c2.id]);
+    const pump = addPart('hpump', { x: x - 70, y: y + 110, layer: H, q: 2, dir: -Math.PI / 2 }), tk = addPart('htank', { x: x - 70, y: y + 135, layer: H }), tk2 = addPart('htank', { x: x - 118, y: y + 125, layer: H }), tk3 = addPart('htank', { x: x + 130, y: y + 125, layer: H });
+    const tee = addPart('hnode', { x: x - 70, y: y + 90, layer: H }), rv = addPart('hrelief', { x: x - 100, y: y + 80, layer: H, pset: 100, dir: -Math.PI / 2 });
+    const dv1 = addPart('hvalve', { x: x + 20, y: y + 70, layer: H, dn: 6, pos: 1 }), dv2 = addPart('hvalve', { x: x + 95, y: y + 70, layer: H, dn: 6, pos: 0 });
+    addPipe(tk, 0, pump, 0, { d: 16, kind: 'suction' }); addPipe(pump, 1, tee, 0, { d: 8 }); addPipe(tee, 0, rv, 0, { d: 8, pts: [[x - 100, y + 90]] });
+    addPipe(rv, 1, tk2, 0, { d: 10, kind: 'return', pts: [[x - 100, y + 62], [x - 118, y + 62]] });
+    addPipe(tee, 0, dv1, 0, { d: 8, pts: [[x + 16, y + 90]] }); addPipe(tee, 0, dv2, 0, { d: 8, pts: [[x + 91, y + 90]] });
+    addPipe(dv1, 1, tk3, 0, { d: 10, kind: 'return', pts: [[x + 24, y + 100], [x + 130, y + 100]] }); addPipe(dv2, 1, tk3, 0, { d: 10, kind: 'return', pts: [[x + 99, y + 100], [x + 130, y + 100]] });
+    addPipe(dv1, 2, c1, 0, { d: 8, mat: 'hose' }); addPipe(dv1, 3, c1, 1, { d: 8, mat: 'hose' }); addPipe(dv2, 2, c2, 0, { d: 8, mat: 'hose' }); addPipe(dv2, 3, c2, 1, { d: 8, mat: 'hose', pts: [[x + 99, y - 40]] });
+    out.push(foot, boom, stick, heel, c1, c2, pump, tk, tk2, tk3, tee, rv, dv1, dv2); return out;
+  } },
   // four-bar: crank 20, coupler 70, rocker 50, frame 80 — a crank-rocker by Grashof's rule
   fourbar: { layers: 1, build(x, y, L) {
     const a = 20, b = 70, c = 50, d = 80, B = { x, y: y - a }, dx = x + d - B.x, dy = y - B.y, f = Math.hypot(dx, dy), k = (b * b - c * c + f * f) / (2 * f), h = Math.sqrt(b * b - k * k);

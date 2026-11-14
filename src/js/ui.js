@@ -195,13 +195,13 @@ function motorFields(p) {
   const nSl = (key, lo, hi) => slider(t(key), lo, hi, 1, () => Math.round(Math.abs(m.n)), v => { m.n = dir() * v; commit(); }, t('u.rpm'));
   const pSl = () => slider(t('motor.P'), 0.01, 500, 0.01, () => +(m.P / 1000).toFixed(3), v => { m.P = v * 1000; commit(); }, unitSym('kW'));
   const kSl = (key, prop, lo, hi) => slider(t(key), lo, hi, 0.05, () => m[prop], v => { m[prop] = v; commit(); });
-  if (k === 'ice') out.push(nSl('motor.limit', 100, 20000));
-  else if (k === 'power') out.push(pSl(), nSl('motor.limit', 1, 60000));
+  if (k === 'ice') out.push(nSl('motor.limit', 0, 20000));
+  else if (k === 'power') out.push(pSl(), nSl('motor.limit', 0, 60000));
   else if (k === 'speed') out.push(slider(t('motor.speed'), -10000, 10000, 1, () => m.rpm, v => { m.rpm = v; commit(); }, t('u.rpm')), slider(t('motor.rated'), 0.01, 1000, 0.01, () => m.tq, v => { m.tq = v; commit(); }, t('u.Nm')));
-  else if (k === 'torque') out.push(slider(t('motor.torque'), 0.01, 1000, 0.01, () => m.tq, v => { m.tq = v; commit(); }, t('u.Nm')), nSl('motor.limit', 1, 10000));
-  else if (k === 'induction') out.push(pSl(), nSl('motor.nNom', 100, 2990), kSl('motor.ks', 'ks', 0.5, 4), kSl('motor.km', 'km', 1.1, 4));
-  else if (k === 'dc') out.push(pSl(), nSl('motor.nNom', 10, 20000), kSl('motor.ks', 'ks', 1.1, 10));
-  else out.push(nSl('motor.cmd', 1, 5000), pSl(), kSl('motor.ks', 'ks', 1, 5));
+  else if (k === 'torque') out.push(slider(t('motor.torque'), 0.01, 1000, 0.01, () => m.tq, v => { m.tq = v; commit(); }, t('u.Nm')), nSl('motor.limit', 0, 10000));
+  else if (k === 'induction') out.push(pSl(), nSl('motor.nNom', 0, 2990), kSl('motor.ks', 'ks', 0.5, 4), kSl('motor.km', 'km', 1.1, 4));
+  else if (k === 'dc') out.push(pSl(), nSl('motor.nNom', 0, 20000), kSl('motor.ks', 'ks', 1.1, 10));
+  else out.push(nSl('motor.cmd', 0, 5000), pSl(), kSl('motor.ks', 'ks', 1, 5));
   return out;
 }
 // what one source is doing, each figure with where it comes from
@@ -410,14 +410,49 @@ function pick(ids, toggle) {
 function setActive(l) { activeLayer = l; sel = new Set(selParts().filter(onActive).map(p => p.id)); armedLayer = null; ui(); save(); }
 function setLayer(p, l) { if (isShaft(p)) { const n = p.l1 - p.l0; p.l0 = Math.min(l, layerCount - 1 - n); p.l1 = p.l0 + n; p.layer = p.l0; } else { p.layer = l; delete p.mount; autoShaft(p); } activeLayer = l; }
 function removeSel() { removeParts([...sel]); commit(); }
-function duplicateSel() {
-  const ps = selParts(); if (!ps.length) return;
-  freeze(); const map = new Map(), made = [];
-  for (const p of ps) { const o = serialize().parts.find(q => q.id === p.id), id = nextId++; map.set(p.id, id); made.push(make({ ...o, id, name: T(p).pre + id, x: p.x + 24, y: p.y + 24, motor: isSource(p) ? o.motor : null })); }
-  for (const q of made) { if (q.mount) { if (map.has(q.mount.c)) q.mount.c = map.get(q.mount.c); else delete q.mount; } parts.push(q); }
-  for (const L of links.slice()) if (L.ids.every(id => map.has(id))) addLink(L.kind, L.ids.map(id => map.get(id)), L.crossed);
-  sel = new Set(made.map(q => q.id)); commit();
+/* ---------- undo, redo, clipboard ---------- */
+// Every committed change leaves a snapshot of the scene. A burst of commits (a slider being dragged) is one step.
+const hist = { stack: [], at: -1, t: 0, mute: false };
+saveHook = s => {
+  if (hist.mute || hist.stack[hist.at] === s) return;
+  const now = performance.now();
+  if (hist.at > 0 && now - hist.t < 350) hist.stack[hist.at] = s;
+  else { hist.stack.length = hist.at + 1; hist.stack.push(s); if (hist.stack.length > 200) hist.stack.shift(); hist.at = hist.stack.length - 1; }
+  hist.t = now;
+};
+function histGo(d) {
+  const i = hist.at + d; if (i < 0 || i >= hist.stack.length) return false;
+  hist.at = i; hist.t = 0; hist.mute = true;
+  try { const act = activeLayer; load(JSON.parse(hist.stack[i])); activeLayer = Math.min(act, layerCount - 1); drag = pan = pdrag = null; place(); solve(); ui(); try { localStorage.setItem(STORE, hist.stack[i]); } catch (e) {} } finally { hist.mute = false; }
+  return true;
 }
+const undo = () => histGo(-1), redo = () => histGo(1);
+// the picked parts with everything that lies wholly among them: belts and chains, pairs, pipes
+let clip = null, mouse = null;
+function copySel() {
+  const ps = selParts(); if (!ps.length) return false;
+  const ids = new Set(ps.map(p => p.id)), S = serialize();
+  clip = { n: 0, parts: S.parts.filter(o => ids.has(o.id)), links: S.links.filter(L => L.ids.every(id => ids.has(id))), pairs: S.pairs.filter(q => ids.has(q.a) && ids.has(q.b)), pipes: S.pipes.filter(q => ids.has(q.a) && ids.has(q.b)),
+    cx: ps.reduce((s, p) => s + p.x, 0) / ps.length, cy: ps.reduce((s, p) => s + p.y, 0) / ps.length };
+  return true;
+}
+// put a copied set on the bench, moved by dx, dy
+function pasteClip(c, dx, dy) {
+  if (!c || !c.parts.length) return;
+  freeze(); const map = new Map(), made = [];
+  for (const o of c.parts) { if (!TYPES[o.type]) continue; const id = nextId++; map.set(o.id, id); made.push(make({ ...JSON.parse(JSON.stringify(o)), id, name: TYPES[o.type].pre + id, x: o.x + dx, y: o.y + dy, layer: Math.min(o.layer, layerCount - 1), motor: isSource(o) ? o.motor : null })); }
+  for (const q of made) { if (isShaft(q)) { q.l1 = Math.min(q.l1, layerCount - 1); q.l0 = Math.min(q.l0, q.l1); q.layer = q.l0; } if (q.mount) { if (map.has(q.mount.c)) q.mount.c = map.get(q.mount.c); else delete q.mount; } parts.push(q); }
+  for (const L of c.links) addLink(L.kind, L.ids.map(id => map.get(id)), L.crossed);
+  for (const q of c.pairs) pairs.push({ ...q, id: nextId++, a: map.get(q.a), b: map.get(q.b) });
+  for (const q of c.pipes) pipes.push({ ...q, id: nextId++, a: map.get(q.a), b: map.get(q.b), pts: q.pts.map(v => [v[0] + dx, v[1] + dy]), ph: 0 });
+  sel = new Set(made.map(q => q.id)); selPipe = null; commit();
+}
+function pasteSel() { // under the pointer when it is over the top view, otherwise a step aside from the last copy
+  if (!clip) return;
+  if (mouse && mouse.y >= bandH()) { const w = toWorld(mouse.x, mouse.y); pasteClip(clip, w.x - clip.cx, w.y - clip.cy); }
+  else { clip.n++; pasteClip(clip, 24 * clip.n, 24 * clip.n); }
+}
+function duplicateSel() { const keep = clip; if (copySel()) pasteClip(clip, 24, 24); clip = keep; }
 function rotateSel(deg) { // one part turns in place; several turn together about their common centre
   const ps = selParts().filter(p => !p.mount), a = deg * Math.PI / 180; if (!ps.length) return;
   freeze();
@@ -766,6 +801,8 @@ cv.addEventListener('pointerdown', e => {
     if (e.shiftKey && !g) startBox(); else if (!g) holdTimer = setTimeout(startBox, 380);   // hold still, then drag, to select an area
   }
 });
+cv.addEventListener('pointermove', e => { mouse = pos(e); });
+cv.addEventListener('pointerleave', () => { mouse = null; });
 cv.addEventListener('pointermove', e => {
   if (!pts.has(e.pointerId)) return;
   const p = pos(e); pts.set(e.pointerId, p);
@@ -879,10 +916,16 @@ addEventListener('keydown', e => {
   if (e.key === 'Escape') { if (pipeDraft) pipeDraft = null; else if (linkDraft) linkDraft = null; else { sel = new Set(); selPipe = null; } ui(); return; }
   if ((e.key === 'Delete' || e.key === 'Backspace') && selPipe != null && !sel.size) { e.preventDefault(); pipes = pipes.filter(q => q.id !== selPipe); selPipe = null; commit(); return; }
   if (typing) return;
+  const mod2 = e.ctrlKey || e.metaKey;   // by key position, so the shortcuts work in any keyboard layout
+  if (mod2 && e.code === 'KeyZ') { e.preventDefault(); if (e.shiftKey) redo(); else undo(); return; }
+  if (mod2 && e.code === 'KeyY') { e.preventDefault(); redo(); return; }
+  if (mod2 && e.code === 'KeyC') { if (copySel()) e.preventDefault(); return; }
+  if (mod2 && e.code === 'KeyX') { if (copySel()) { e.preventDefault(); removeSel(); } return; }
+  if (mod2 && e.code === 'KeyV') { if (clip) { e.preventDefault(); pasteSel(); } return; }
   if (e.key === 'Enter' && linkDraft) finishLink();
   else if (e.key === ' ') { e.preventDefault(); running = !running; ui(); }
   else if ((e.key === 'Delete' || e.key === 'Backspace') && sel.size) { e.preventDefault(); removeSel(); }
-  else if (e.key.toLowerCase() === 'r' || e.key.toLowerCase() === 'к') rotateSel(e.shiftKey ? -15 : 15);
+  else if (!mod2 && e.code === 'KeyR') rotateSel(e.shiftKey ? -15 : 15);
   else if ((e.ctrlKey || e.metaKey) && (e.key.toLowerCase() === 'a' || e.key.toLowerCase() === 'ф')) { e.preventDefault(); pick(parts.filter(canPick).map(p => p.id)); }
   else if ((e.ctrlKey || e.metaKey) && (e.key.toLowerCase() === 'd' || e.key.toLowerCase() === 'в')) { e.preventDefault(); duplicateSel(); }
 });
@@ -893,7 +936,7 @@ function start(d) {
   try { const src = d && d.parts ? d : JSON.parse(localStorage.getItem(STORE) || 'null'); if (src && Array.isArray(src.parts) && src.parts.length) { load(src); ok = true; } } catch (e) {}
   if (!ok) example();
   running = !matchMedia('(prefers-reduced-motion: reduce)').matches;
-  readTokens(); resize(); applyLang(); $('new-type').onchange(); place(); solve(); fit(); ui();
+  readTokens(); resize(); applyLang(); $('new-type').onchange(); place(); solve(); fit(); ui(); saveHook(JSON.stringify(serialize()));
   new ResizeObserver(resize).observe(sheet);
   matchMedia('(prefers-color-scheme: dark)').addEventListener('change', readTokens);
   new MutationObserver(readTokens).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
@@ -915,7 +958,7 @@ function start(d) {
   requestAnimationFrame(frame);
 }
 // small hook for automated checks
-window.__bench = { state: () => ({ lock: lockMsg, hint: hintMsg, io: ioRows(), warnings: warnings.map(w => [w.level, w.code]), parts: parts.map(p => ({ name: p.name, w: +outOf(p).w.toFixed(4), und: p.und })) }), parts: () => parts, solve, pick };
+window.__bench = { undo, redo, copySel, pasteSel, hist, state: () => ({ lock: lockMsg, hint: hintMsg, io: ioRows(), warnings: warnings.map(w => [w.level, w.code]), parts: parts.map(p => ({ name: p.name, w: +outOf(p).w.toFixed(4), und: p.und })) }), parts: () => parts, solve, pick };
 const hot = window.claude && window.claude.hot;
 if (hot && hot.snapshot) hot.snapshot(() => serialize());
 if (hot && hot.ready) hot.ready(start); else start(hot && hot.data ? hot.data : null);

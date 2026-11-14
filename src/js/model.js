@@ -322,4 +322,5 @@ function load(d) {
   layerNames = ls.map(L => L.name || ''); soloActive = !!d.solo; schemeMode = d.scheme !== false; sel = new Set(); linkDraft = null; activeLayer = 0; clock = 0;
 }
 const STORE = 'gear-bench-5';
-function save() { try { localStorage.setItem(STORE, JSON.stringify(serialize())); } catch (e) {} }
+let saveHook = null;   // the panel keeps its undo history through this
+function save() { const s = JSON.stringify(serialize()); try { localStorage.setItem(STORE, s); } catch (e) {} if (saveHook) saveHook(s); }

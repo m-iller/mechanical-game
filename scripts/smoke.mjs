@@ -121,6 +121,17 @@ for (const tpl of ['genevalinks', 'ratchetlinks', 'camrocker']) {
   await page.evaluate(tpl => { resetScene(1); const m = insertTemplate(tpl, 0, 0); solve(); fit(); pick([m[m.length - 1].id]); }, tpl); await page.waitForTimeout(250);
   s = await state(); if (s.lock || s.warnings.some(w => w[0] !== 'info') || await page.evaluate(() => tmmStuck)) fail(tpl + ': ' + s.lock + JSON.stringify(s.warnings));
 }
+// undo, redo, copy and paste from the keyboard; a motor of any kind can be set to zero speed
+await page.evaluate(() => { resetScene(1); const a = addPart('spur', { x: 0, y: 0, z: 20, motor: { rpm: 60, tq: 1 } }); solve(); fit(); pick([a.id]); save(); });
+await page.waitForTimeout(400);
+{ const c = await topPos(0, 0); await page.mouse.move(c.x, c.y); await page.keyboard.press('Control+c'); const d = await topPos(40, 20); await page.mouse.move(d.x, d.y); await page.keyboard.press('Control+v'); }
+let un = await page.evaluate(() => parts.map(p => [p.type, Math.round(p.x), Math.round(p.y)]));
+if (JSON.stringify(un) !== '[["spur",0,0],["spur",40,20]]') fail('copy and paste: ' + JSON.stringify(un) + JSON.stringify(await page.evaluate(() => [mouse, bandH(), viewMode])));
+await page.keyboard.press('Control+z'); un = await page.evaluate(() => parts.length); if (un !== 1) fail('undo left ' + un + ' parts');
+await page.keyboard.press('Control+Shift+z'); un = await page.evaluate(() => parts.length); if (un !== 2) fail('redo left ' + un + ' parts');
+await page.keyboard.press('Control+z');
+un = await page.evaluate(() => { resetScene(1); const out = []; for (const kind of MOTOR_KINDS) { const m = addPart('emotor', { x: 0, y: 0 }); setMotorKind(m.motor, kind); m.motor.n = 0; m.motor.rpm = 0; solve(); out.push([kind, m.w, lockMsg || '', warnings.filter(w => w.level === 'error').length]); removeParts([m.id]); } return out; });
+for (const [kind, w, lock, errs] of un) if (w !== 0 || lock || errs) fail('zero speed, ' + kind + ': ' + JSON.stringify([w, lock, errs]));
 // laying a pipe in the side view: port on one layer, port on another
 await page.evaluate(() => { resetScene(2); addPart('htank', { x: 0, y: 0, layer: 0 }); addPart('hpump', { x: 60, y: 0, layer: 1, q: 5, motor: { rpm: 1000, tq: 20 } }); solve(); viewMode = 'both'; fit(); setActive(1); pipeDraft = { a: null, pts: [], cur: null }; ui(); });
 const sa = await sidePos(0, 0), sb = await sidePos(49, 1);

@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased — 3.0.0 (branch `engineering-tool`)
+## 3.0.0-beta.1 (branch `engineering-tool`, not released yet)
 
 Gear Bench is growing from a drive sandbox into a rough-figures tool for mechanical engineering. Plan and status: `docs/ROADMAP.md`, `docs/PROGRESS.md`.
 
@@ -30,7 +30,14 @@ Gear Bench is growing from a drive sandbox into a rough-figures tool for mechani
 - **Generator and heater**: the generator loads the shaft and sends its power down a wire to a heater, whose temperature rises as a thermal mass; a lamp on the generator glows with the load. A heater can also be a friction brake on a shaft.
 - **More sources and consumers**: hand crank, weight on a rope, spring motor, hoist with a load. Template "Engine, flywheel, generator, heater".
 - Heat-engine cores: Brayton and Rankine cycles with fits to the steam tables, one axial turbine stage with speed triangles.
+- **Gas-turbine and steam plant**: compressor, combustor, turbine, boiler, condenser, feed pump and stack as blocks joined by gas and steam lines with the flow shown on them. Cycle figures (Brayton, Rankine), and for a turbine the speed triangles of its stage at the speed the shaft has. Templates "Gas-turbine set" and "Steam plant".
+- **Belt conveyor** as a consumer; in scheme mode the side view shows outlines with a cross where a part is fixed on its shaft.
+- **Mechanisms**: plans of velocities and accelerations for the current position, dead points, pressure angle of a slider and transmission angle of a rocker with warnings.
+- **Hydraulics**: accumulator, and a reducer loss where pipes of different bore meet.
 
 ### Changed
-- Scenes are saved in format v3. Scenes from 2.x open and are migrated on load.
+- Scenes are saved in format v5. Scenes from 2.x and earlier 3.0 builds open and are migrated on load.
 - With loads on the bench, torque figures show the real power flow. Without loads the old estimate stays (all motor power taken at the chosen output) and says so in its explanation.
+
+### Known limits
+See the section "Известные ограничения и допущения" in `docs/PROGRESS.md`.

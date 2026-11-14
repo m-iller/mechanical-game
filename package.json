@@ -1,6 +1,6 @@
 {
   "name": "mechanical-game",
-  "version": "3.0.0-alpha.1",
+  "version": "3.0.0-beta.1",
   "description": "Gear Bench: build machines from separate gears, shafts, belts, chains and mechanisms, and watch them run.",
   "main": "main.js",
   "homepage": "https://github.com/m-iller/mechanical-game",

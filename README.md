@@ -51,6 +51,8 @@ The branch `engineering-tool` turns the sandbox into a tool for quick estimates,
 - The top view is a **kinematic scheme** with symbols after GOST 2.770-68; the "Scheme" button switches to drawn parts and back.
 - **Mechanisms from links**: crank, rod, rocker, slider, slotted link, cam and follower. Pairs appear where joints are dropped together. Graphs over a turn of the crank, forces, flywheel.
 - **Hydraulic drive**: pump, valves, cylinders and motors joined by pipes, with the flow and the pressure shown on the lines.
+- **Sources and consumers**: piston engine with its indicator diagram, hand crank, weight, spring; generator with a lamp, heater, hoist, belt conveyor.
+- **Heat plant**: compressor, combustor, turbine, boiler, condenser on gas and steam lines; Brayton and Rankine figures and the turbine's speed triangles.
 - **Warnings** tell when a model is outside its range: stall, overload, undercut and others.
 
 ## What it shows
@@ -93,7 +95,8 @@ The app is plain HTML, CSS and JavaScript with no runtime dependencies. `main.js
 | `src/js/power.js` | operating point of each train, power flow, applicability checks |
 | `src/js/domains/tmm/` | mechanisms: linkage solver, cams, links on the bench, cycle analysis, panel |
 | `src/js/domains/pipes/`, `hydro/` | pipe losses, hydraulic network solver, hydraulics on the bench |
-| `src/js/scheme.js` | scheme symbols: drives, links, hydraulics, pipes |
+| `src/js/domains/io/`, `thermo/` | engine, generator, heater and other sources and consumers; engine cycle, Brayton, Rankine, turbine stage; plant blocks on the bench |
+| `src/js/scheme.js` | scheme symbols: drives, links, hydraulics, pipes, plant blocks |
 | `src/js/draw.js` | top and side views |
 | `src/js/templates.js` | ready-made assemblies and the opening example |
 | `src/js/ui.js` | panel, pointer and keyboard input |

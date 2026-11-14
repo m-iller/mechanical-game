@@ -290,7 +290,7 @@ function renderLayers() {
 }
 function renderSel() {
   const ps = selParts(), p = ps.length === 1 ? ps[0] : null, body = $('sel-body');
-  const key = JSON.stringify([sceneGen, selPipe, pipeDraft && [pipeDraft.a, 1], pipes.map(q => [q.id, q.kind, q.fluid, q.mat, q.pts.length]), lang, layerCount, linkDraft && [linkDraft.kind, linkDraft.ids], outId, links.map(L => [L.ids, L.crossed]), ps.map(q => [q.id, q.type, q.layer, q.on, q.held, q.loose, !!q.motor, q.load && q.load.kind, q.mount && q.mount.c, q.l0, q.l1, q.law, q.pos, q.st, q.ekind]), pairs.map(q => [q.id, q.type])]);
+  const key = JSON.stringify([sceneGen, selPipe, pipeDraft && [pipeDraft.a, 1], pipes.map(q => [q.id, q.kind, q.fluid, q.mat, q.pts.length]), lang, layerCount, linkDraft && [linkDraft.kind, linkDraft.ids], outId, links.map(L => [L.ids, L.crossed]), ps.map(q => [q.id, q.type, q.layer, q.on, q.held, q.loose, !!q.motor, q.load && q.load.kind, q.mount && q.mount.c, q.l0, q.l1, q.law, q.pos, q.st, q.ekind, q.grav]), pairs.map(q => [q.id, q.type])]);
   $('sel-name').textContent = p ? `${p.name} · ${typeName(p)}` : ps.length ? t('sel.many', { n: ps.length }) : t('sel.none');
   if (key !== selKey) {
     selKey = key; selRefresh = []; graphTick = null; body.textContent = '';
@@ -513,8 +513,8 @@ function hydRows(p) {
   } else if (p.type === 'hcyl') {
     const A1 = cylA1(p), A2 = cylA2(p), out = r.v >= 0, left = r.v > 1e-9 ? (p.st - p.s) / 1000 / r.v : r.v < -1e-9 ? p.s / 1000 / -r.v : 0;
     rows.push([t('hy.v'), r.held ? t('hy.held') : fmtU(r.v, 'mm/s'), ex('v', r.v, 'mm/s', out ? 'v = Q / A₁' : 'v = Q / A₂', [['Q', Math.abs(out ? r.Q : r.v * A2), 'L/min'], [out ? 'A₁' : 'A₂', `${fmtNum((out ? A1 : A2) * 1e4)} cm²`]], ['ex.hydSteady'])],
-      [t('hy.pA'), barText(r.pA), ex('p_A', r.pA, 'bar', 'p_A·A₁ − p_B·A₂ = F', [['F', r.v < -1e-9 && p.Fb != null ? -p.Fb : p.F || 0, 'N'], ['A₁', `${fmtNum(A1 * 1e4)} cm²`], ['A₂', `${fmtNum(A2 * 1e4)} cm²`], ['p_B', r.pB, 'bar']], ['ex.cylStatic'])],
-      [t('hy.pB'), barText(r.pB)], [t('hy.s'), `${fmtNum(p.s)} / ${p.st} ${unitSym('mm')}`]);
+      [t('hy.pA'), barText(r.pA), ex('p_A', r.pA, 'bar', 'p_A·A₁ − p_B·A₂ = F', [['F', r.v < -1e-9 && p.Fb != null ? -p.Fb : (p.F || 0) + (p.Fs || 0), 'N'], ['A₁', `${fmtNum(A1 * 1e4)} cm²`], ['A₂', `${fmtNum(A2 * 1e4)} cm²`], ['p_B', r.pB, 'bar']], ['ex.cylStatic'])],
+      [t('hy.pB'), barText(r.pB)], ...(p.grav ? [[t('hy.Fs'), fmtU(p.Fs || 0, 'force'), ex('F', p.Fs || 0, 'force', 'F = −g·Σ m·dy/ds', [], ['ex.virtual'])]] : []), [t('hy.s'), `${fmtNum(p.s)} / ${p.st} ${unitSym('mm')}`]);
     if (left) rows.push([t('hy.left'), `${fmtNum(left, 2)} ${unitSym('s')}`]);
   } else if (p.type === 'hmotor') {
     rows.push([t('io.n'), fmtU(Math.abs(r.w), 'rpm'), ex('n', Math.abs(r.w), 'rpm', 'n = Q·η_v / q', [['Q', r.Q, 'L/min'], ['q', `${p.q} cm³`], ['η_v', ETA_V, '']], ['ex.pumpEta'])],
@@ -546,7 +546,7 @@ function hydFields(p) {
   const out = [], num = (key, k, lo, hi, step, unit, def = 0) => slider(t(key), lo, hi, step, () => p[k] == null ? def : p[k], v => { p[k] = v; commit(); }, unit);
   if (p.type === 'hvalve') out.push(rowOf(...[[1, 'P→A'], [0, '0'], [-1, 'P→B']].map(([k, lb]) => btn(lb, () => { p.pos = k; commit(); }, (p.pos || 0) === k))));
   if (p.type === 'hcyl') out.push(slider(t('hy.rod'), 4, 300, 1, () => rodD(p), v => { p.dr = Math.min(v, p.d - 2); commit(); }, unitSym('mm')), slider(t('hy.s'), 0, p.st, 0.5, () => +(p.s || 0).toFixed(1), v => { p.s = v; delete p.jam; commit(); }, unitSym('mm')),
-    num('hy.F', 'F', -1e6, 1e6, 10, unitSym('N')), num('hy.Fb', 'Fb', 0, 1e6, 10, unitSym('N')));
+    num('hy.F', 'F', -1e6, 1e6, 10, unitSym('N')), num('hy.Fb', 'Fb', 0, 1e6, 10, unitSym('N')), rowOf(btn(t('hy.grav'), () => { p.grav = !p.grav; if (!p.grav) delete p.grav; commit(); }, !!p.grav)));
   if (p.type === 'hmotor') out.push(num('hy.M', 'M', 0, 1e5, 0.1, unitSym('Nm')));
   if (p.type !== 'hnode' || true) out.push(rowOf(btn(t('hy.lay'), () => { pipeDraft = { a: null, pts: [], cur: null }; sel = new Set(); ui(); })));
   return out;
@@ -641,6 +641,7 @@ function thRows(p) {
   if (p.type === 'tcomp') {
     rows.push([t('th.T2'), degC(r.T2), ex('T₂', r.T2, 'degC', 'T₂ = T₁ + T₁·(π^((k−1)/k) − 1) / η_c', [['T₁', r.T1, 'degC'], ['π', p.pr, ''], ['k', AIR.k, ''], ['η_c', p.etaC || 0.85, '']], ['ex.idealGas'])],
       [t('th.p2'), fmtU(r.p2, 'bar')], [t('th.wc'), kJ(r.wc), ex('w_c', r.wc, '', 'w_c = c_p·(T₂ − T₁)', [['c_p', `${AIR.cp} J/(kg·K)`], ['T₂', r.T2, 'degC'], ['T₁', r.T1, 'degC']], ['ex.idealGas'])],
+      [t('th.m'), `${fmtNum(r.m, 3)} kg/s`, ex('ṁ', r.m, '', p.nd ? 'ṁ = ṁ_d·n / n_d' : 'ṁ = ṁ_d', p.nd ? [['ṁ_d', `${p.mf} kg/s`], ['n', Math.abs(p.w) * RPM, 'rpm'], ['n_d', p.nd * RPM, 'rpm']] : [], ['ex.mFixed'])],
       [t('th.Pc'), fmtU(r.Pc, 'power'), ex('P', r.Pc, 'power', 'P = ṁ·w_c', mv, ['ex.mFixed'])]);
     if (r.turb) rows.push([t('th.Pnet'), fmtU(r.P, 'power'), ex('P', r.P, 'power', 'P = ṁ·(w_t − w_c)', [...mv, ['w_t', kJ(r.wt)], ['w_c', kJ(r.wc)]], ['ex.mFixed'])],
       [t('th.eta'), `${fmtNum(100 * r.eta)} %`, ex('η', r.eta, '%', 'η = (w_t − w_c) / q,   q = c_p·(T₃ − T₂)', [['w_t', kJ(r.wt)], ['w_c', kJ(r.wc)], ['q', kJ(r.q)]], ['ex.idealGas', 'ex.brayton'])],
@@ -664,7 +665,7 @@ function thRows(p) {
 }
 function thFields(p) {
   const out = [], num = (key, k, lo, hi, step, unit, def) => slider(t(key), lo, hi, step, () => p[k] == null ? def : p[k], v => { p[k] = v; commit(); }, unit);
-  if (p.type === 'tcomp') out.push(num('th.mf', 'mf', 0.01, 1000, 0.01, 'kg/s', 1), num('th.etaC', 'etaC', 0.5, 1, 0.01, '', 0.85));
+  if (p.type === 'tcomp') out.push(num('th.mf', 'mf', 0.01, 1000, 0.01, 'kg/s', 1), num('th.nd', 'nd', 0, 60000, 50, t('u.rpm'), 0), num('th.etaC', 'etaC', 0.5, 1, 0.01, '', 0.85));
   if (p.type === 'tboil') out.push(num('th.mf', 'mf', 0.01, 1000, 0.01, 'kg/s', 1), num('th.Tb', 'Tb', 100, 650, 5, '°C', 350));
   if (p.type === 'tturb') {
     out.push(num('th.etaT', 'etaT', 0.5, 1, 0.01, '', 0.88), num('th.z', 'zst', 1, 30, 1, '', 1), num('th.a1', 'a1', 8, 40, 0.5, '°', 16), num('th.rho', 'rho', 0, 0.7, 0.05, '', 0), num('motor.limit', 'nmax', 100, 60000, 50, t('u.rpm'), 12000));
@@ -889,7 +890,7 @@ function start(d) {
       const tk = hydTick(dt); ioTick(dt); let ok = tmmStep();
       if (!ok && tk.undo.some(([q, s0]) => q.s !== s0)) { hydJam(tk.undo); tk.restep = true; ok = tmmStep(); }   // a cylinder ran the linkage to its limit: it stops there, the crank's time goes on
       if (!ok) { clock = c0; place(); }
-      if (tk.restep) { hydroStep(); elStep(); thermoPipes(); warnings = runChecks({ parts, power }); ui(); }
+      if (tk.restep) { hydroStep(); elStep(); thermoStep(true); thermoPipes(); warnings = runChecks({ parts, power }); ui(); }
       if (ok === tmmStuck) { tmmStuck = !ok; ui(); }
       if (graphTick && ++frameNo % 4 === 0) graphTick();
     }

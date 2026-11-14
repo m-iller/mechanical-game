@@ -22,7 +22,7 @@ function autoLoad(p) {
   if (p.type === 'generator') { const wn = p.nn * W_RPM, Mn = p.Pn / (wn * p.ge), k = wiredTo(p, 'heater').length ? 1 : 0.03; return w => k * Mn * w / wn; }   // open circuit: only its own losses
   if (p.type === 'hoist') return () => (p.m || 0) * G0 * p.d / 2000 / HOIST_ETA;
   if (p.type === 'conveyor') return () => (p.F || 0) * p.d / 2000 / CONV_ETA;                         // belt pull on the drive drum
-  if (p.type === 'tcomp') return w => (p.pc || 0) / Math.max(w, 1);                                   // a compressor takes the power its flow needs
+  if (p.type === 'tcomp') return p.pcM ? () => p.pcM : w => (p.pc || 0) / Math.max(w, 1);   // constant torque when its flow follows the speed                                   // a compressor takes the power its flow needs
   return null;
 }
 // the sources' torques, from what they are

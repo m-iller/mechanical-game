@@ -95,3 +95,26 @@ test('a reducer is counted where pipes of different bore meet; an accumulator on
   });
   assert.deepEqual(r.z, [0.3, 0.3]); assert.ok(r.ok); close(r.p1, r.p0, 1e-6); close(r.q, 0, 0, 1e-9);
 });
+
+test('weight carried by a cylinder, by virtual work: straight lift F = m·g; under the end of a lever with the mass at its middle F = m·g/2', () => {
+  const r = bench().run(() => {
+    // 1: a cylinder pointing up the screen under a slider of 100 kg on an upright guide
+    resetScene(1); const pv = addPart('pivot', { x: 0, y: 0 }), cy = addPart('hcyl', { x: 0, y: 0, d: 40, st: 60, s: 10, dir: -Math.PI / 2, grav: true });
+    hydSync(); const g = addPart('guide', { x: 0, y: -100, len: 160, dir: -Math.PI / 2 }), sl = addPart('tslider', { x: 0, y: -cy.len, dir: -Math.PI / 2, m: 100 });
+    tmmAttach([cy.id, sl.id]); solve(); const lift = cy.Fs;
+    // 2: a lever 200 long hinged at its left end, 100 kg at its middle, the cylinder upright under its right end
+    resetScene(1); addPart('pivot', { x: 0, y: 0 }); const lv = addPart('trocker', { x: 0, y: 0, len: 200, dir: 0, m: 100 }), p2 = addPart('pivot', { x: 200, y: 90 }), c2 = addPart('hcyl', { x: 200, y: 90, d: 40, st: 60, s: 14, dir: -Math.PI / 2, grav: true });
+    hydSync(); tmmAttach([lv.id, c2.id]); solve();
+    return { lift, lever: c2.Fs, ok: tmmInfo.ok, W: tmmInfo.groups.map(g => g.W) };
+  });
+  close(r.lift, 100 * 9.81, 1e-4); assert.ok(r.ok); close(r.lever, 100 * 9.81 / 2, 2e-3);
+});
+
+test('with the weight carried, the pressure under the piston follows it', () => {
+  const r = bench().run(() => {
+    resetScene(2); const m = insertTemplate('hydro', 0, 0), cy = m.find(p => p.type === 'hcyl'), sl = m[m.length - 1], dv = m.find(p => p.type === 'hvalve');
+    cy.F = 0; delete cy.Fb; cy.grav = true; sl.m = 300; dv.pos = 1; solve();   // the template's cylinder lies along x: its slider's weight does not load it
+    return { Fs: cy.Fs, pA: hyd.part.get(cy.id).pA };
+  });
+  close(r.Fs, 0, 0, 1e-3); assert.ok(r.pA < 3e5);
+});

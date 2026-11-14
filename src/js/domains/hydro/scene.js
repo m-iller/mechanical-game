@@ -46,7 +46,7 @@ function hydroNet() {
     else if (p.type === 'hthrottle') add({ k: 'orifice', a: node(p, 0), b: node(p, 1), A: pipeArea(p.dn / 1000) }, { part: p });
     else if (p.type === 'hcheck') add({ k: 'check', a: node(p, 0), b: node(p, 1), A: pipeArea(p.dn / 1000), pcrack: 0.5e5 }, { part: p });
     else if (p.type === 'hvalve' && p.pos) { const A = pipeArea(p.dn / 1000), [w1, w2] = p.pos > 0 ? [2, 3] : [3, 2]; add({ k: 'orifice', a: node(p, 0), b: node(p, w1), A }, { part: p, path: 'in' }); add({ k: 'orifice', a: node(p, w2), b: toTank(p, 1), A }, { part: p, path: 'out' }); }
-    else if (p.type === 'hcyl') add({ k: 'cyl', a: node(p, 0), b: node(p, 1), A1: cylA1(p), A2: cylA2(p), F: p.F || 0, stop: p.s <= 1e-6 ? -1 : p.s >= p.st - 1e-6 ? 1 : 0, jam: p.jam || 0 }, { part: p });
+    else if (p.type === 'hcyl') add({ k: 'cyl', a: node(p, 0), b: node(p, 1), A1: cylA1(p), A2: cylA2(p), F: (p.F || 0) + (p.Fs || 0), stop: p.s <= 1e-6 ? -1 : p.s >= p.st - 1e-6 ? 1 : 0, jam: p.jam || 0 }, { part: p });
     else if (p.type === 'hmotor') add({ k: 'motor', a: node(p, 0), b: toTank(p, 1), q: p.q * 1e-6 / TAU / ETA_V, M: ((p.M || 0) + ((power.src.get(p.id) || {}).M || 0)) / ETA_M }, { part: p });
   }
   // a cylinder is held only against the stop it is standing on: it may always move away from it. Which way it wants to go is found by solving free first.
@@ -95,13 +95,26 @@ function hydTick(dt) {
     const r = hyd.part.get(p.id), s0 = p.s, v = r && hyd.ok ? r.v : 0;
     p.s = Math.max(0, Math.min(p.st, p.s + v * dt * 1000)); p.len = CYL_L0(p) + p.s; undo.push([p, s0]);
     if ((s0 > 0 && s0 < p.st) !== (p.s > 0 && p.s < p.st) || (p.jam && v * p.jam < 0)) { restep = true; if (p.jam && v * p.jam < 0) delete p.jam; }
+    if (p.grav && p.s !== s0) { const f = cylStatic(p); if (Math.abs(f - (p.Fs || 0)) > 0.02 * Math.max(Math.abs(f), 50)) { p.Fs = f; restep = true; } }   // the weight's lever changes as the linkage moves
   }
   for (const q of pipes) { const r = hyd.pipe.get(q.id); if (r) q.ph = (q.ph || 0) + (r.va != null ? r.va : r.v) * dt; }   // gas runs too fast to draw at its own speed
   return { undo, restep };
 }
 // the linkage could not follow: put the cylinders back and hold them in the direction they were going
 function hydJam(undo) { for (const [p, s0] of undo) { const r = hyd.part.get(p.id); if (r && Math.abs(r.v) > 1e-9 && p.s !== s0) p.jam = Math.sign(r.v); p.s = s0; p.len = CYL_L0(p) + p.s; } }
-const hydSync = () => { for (const p of parts) if (p.type === 'hcyl') { p.s = Math.max(0, Math.min(p.st, p.s || 0)); p.len = CYL_L0(p) + p.s; } };
+/* The force a cylinder must give to hold up the links it carries, from the principle of virtual work: move the rod a little
+   each way, let the linkage follow, and see how far the masses rise. F = −g·Σ m·dy/ds, y being down the screen.
+   Positive resists extension; negative means the weight would run the rod out by itself. */
+function cylStatic(c) {
+  const mass = parts.filter(p => isLink(p) && p.m > 0 && !ty(p, 'tcrank', 'tcam')); if (!mass.length) return 0;
+  const len0 = c.len, d = 0.25, ys = [];
+  for (const sg of [-1, 1]) {
+    c.len = len0 + sg * d; const mech = tmmMech(), lk = linkage(mech), r = solveNL(lk.eqs, mech.q0, { tol: 1e-10, max: 40 }); c.len = len0; if (r.res > 1e-4) return c.Fs || 0;
+    ys.push(mass.reduce((s, p) => s + p.m * (mech.moving.includes(p) ? lk.at(r.x, p.id, linkCentre(p))[1] : toWorldOf(p, linkCentre(p)).y), 0));
+  }
+  return -G0 * (ys[1] - ys[0]) / (2 * d);
+}
+const hydSync = () => { for (const p of parts) if (p.type === 'hcyl') { p.s = Math.max(0, Math.min(p.st, p.s || 0)); p.len = CYL_L0(p) + p.s; if (p.grav) p.Fs = cylStatic(p); else delete p.Fs; } };
 
 /* ---------- picking ---------- */
 // the port nearest to a point, within r: { p, k }

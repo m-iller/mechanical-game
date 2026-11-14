@@ -93,7 +93,7 @@ const DEFAULTS = { emotor: { motor: { kind: 'induction', P: 370, n: 1320, ks: 2.
   weight: { m: 20, motor: { kind: 'torque', tq: 4, n: 3000, rpm: 100 } }, spring: { M: 2, motor: { kind: 'torque', tq: 2, n: 3000, rpm: 100 } },
   tcomp: { mf: 1, etaC: 0.85 }, tturb: { etaT: 0.88, a1: 16, zst: 1, rho: 0, nmax: 12000 }, tboil: { mf: 1, Tb: 350 },
   generator: { Pn: 3000, nn: 3000, ge: 0.9 }, heater: { hm: 2, hk: 5 }, hoist: { m: 50 }, conveyor: { F: 1000, len: 160 }, carrier: { n: 3 }, tplate: { n: 3 }, tcam: { h: 8 }, hcyl: { st: 60, s: 0, F: 0 }, hvalve: { pos: 0 }, crank: { l: 40 }, ring: { loose: true }, clutch: { on: true }, brake: { on: true }, ratchet: { on: false } };
-const PROPS = ['z', 'zw', 'd', 'r', 'n', 'l', 'h', 'len', 'l0', 'l1', 'dir', 'on', 'loose', 'held', 'label', 'F', 'fw', 'm', 'J', 'rr', 'law', 'b1', 'bd', 'b2', 'q', 'pset', 'dn', 'pos', 'st', 's', 'dr', 'M', 'Fb', 'Pn', 'nn', 'ge', 'hm', 'hk', 'eD', 'eS', 'eps', 'cyl', 'ekind', 'thr', 'e', 'pr', 'mf', 'etaC', 'T3', 'dm', 'etaT', 'a1', 'zst', 'rho', 'nmax', 'pb', 'Tb', 'pk'];
+const PROPS = ['z', 'zw', 'd', 'r', 'n', 'l', 'h', 'len', 'l0', 'l1', 'dir', 'on', 'loose', 'held', 'label', 'F', 'fw', 'm', 'J', 'rr', 'law', 'b1', 'bd', 'b2', 'q', 'pset', 'dn', 'pos', 'st', 's', 'dr', 'M', 'Fb', 'Pn', 'nn', 'ge', 'hm', 'hk', 'eD', 'eS', 'eps', 'cyl', 'ekind', 'thr', 'e', 'grav', 'pr', 'mf', 'nd', 'etaC', 'T3', 'dm', 'etaT', 'a1', 'zst', 'rho', 'nmax', 'pb', 'Tb', 'pk'];
 const MOTOR_KEYS = ['kind', 'rpm', 'tq', 'P', 'n', 'ks', 'km'], LOAD_KEYS = ['kind', 'tq', 'n', 'eta', 'table'];
 const pickKeys = (o, keys) => { const r = {}; for (const k of keys) if (o[k] != null) r[k] = Array.isArray(o[k]) ? o[k].map(x => Array.isArray(x) ? x.slice() : x) : o[k]; return r; };
 

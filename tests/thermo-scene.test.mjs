@@ -52,3 +52,14 @@ test('a compressor with nothing after it only loads its shaft', () => {
   });
   close(r.P, r.Pc, 1e-6); assert.ok(r.warn.includes('w.noTurbine'));
 });
+
+test('with a design speed on the compressor the flow follows the shaft: lighter load, faster shaft, more air, more power', () => {
+  const r = bench().run(() => {
+    resetScene(3); const [c, sh, tb, g] = insertTemplate('gasturbine', 0, 0); c.nd = 6000; solve();
+    const one = () => ({ n: c.w, m: thermo.part.get(c.id).m, Pnet: thermo.part.get(tb.id).Pt - thermo.part.get(c.id).Pc, Pm: elec.gen.get(g.id).Pm, warn: warnings.map(w => w.code) });
+    const a = one(); g.Pn = 350000; tb.nmax = 9000; solve(); return [a, one()];   // room under the speed limit, or the governor would hold the shaft there
+  });
+  for (const x of r) { close(x.m, 2 * x.n / 6000, 1e-9); close(x.Pm, x.Pnet, 2e-2); }
+  assert.deepEqual(r[0].warn, []);                               // off the design point the lines run fast and the heater gets more: those warnings are right
+  assert.ok(r[1].n > r[0].n * 1.2 && r[1].m > r[0].m * 1.2);
+});

@@ -17,7 +17,7 @@ let power = { has: false, src: new Map(), load: new Map(), flow: new Map() }, wa
 function solve() {
   tmmLoads(); hydSync(); ioSync(); thermoStep();
   for (let pass = 0; pass < 5; pass++) { hydLoads(); solveDrive(); if (hydroStep() < 0.005) break; }
-  elStep(); thermoPipes();
+  elStep(); thermoStep(true); thermoPipes();
   tmmStep(); tmmAnalyze();
   warnings = runChecks({ parts, power });
 }

@@ -71,18 +71,27 @@ const TYPES = {
   hcheck:   { pre: 'CV', grp: 'hyd', key: 'dn',   lim: [1, 40, 0.5], def: 6, dir: 1 },
   hnode:    { pre: 'J',  grp: 'hyd' },                                                               // tee: a point where pipes meet
   hcyl:     { pre: 'CY', grp: 'hyd', key: 'd',    lim: [10, 400, 1], def: 40, key2: 'st', lim2: [10, 1500], dir: 1 },   // bore and stroke, mm
+  /* gas-turbine and steam plant blocks: an inlet and an outlet port each, joined by gas and steam lines */
+  tcomp:    { pre: 'CP', grp: 'heat', key: 'pr',  lim: [1.5, 40, 0.1], def: 8, dir: 1 },           // compressor: pressure ratio
+  tburn:    { pre: 'CC', grp: 'heat', key: 'T3',  lim: [300, 1700, 10], def: 1000, dir: 1 },      // combustor: gas temperature, °C
+  tturb:    { pre: 'TB', grp: 'heat', key: 'dm',  lim: [50, 3000, 5], def: 400, dir: 1 },         // turbine: mean blade diameter, mm
+  tboil:    { pre: 'BL', grp: 'heat', key: 'pb',  lim: [2, 200, 1], def: 30, dir: 1 },            // boiler: pressure, bar
+  tcond:    { pre: 'CD', grp: 'heat', key: 'pk',  lim: [3, 100, 1], def: 10, dir: 1 },            // condenser: pressure, kPa
+  tfeed:    { pre: 'FP', grp: 'heat', dir: 1 },                                                   // feed pump
+  tstack:   { pre: 'ST', grp: 'heat', dir: 1 },                                                   // exhaust to the atmosphere
   crank:    { pre: 'K',  grp: 'mech',   key: 'r',   lim: [3, 150, 1], def: 14, key2: 'l', lim2: [10, 600], dir: 1 },
   cam:      { pre: 'CM', grp: 'mech',   key: 'h',   lim: [1, 40, 1], def: 8,  dir: 1 },
   geneva:   { pre: 'GV', grp: 'mech',   key: 'z',   lim: [4, 24, 1], def: 4,  dir: 1 },
   ratchet:  { pre: 'RT', grp: 'mech',   key: 'z',   lim: [6, 200, 1], def: 16, tog: 1 },
 };
-const GROUPS = ['io', 'gears', 'flex', 'shafts', 'tmm', 'hyd', 'mech'];
+const GROUPS = ['io', 'gears', 'flex', 'shafts', 'tmm', 'hyd', 'heat', 'mech'];
 // a small catalogue motor (0.37 kW, 4 poles) and a machine that takes a constant 2 N·m
 const DEFAULTS = { emotor: { motor: { kind: 'induction', P: 370, n: 1320, ks: 2.2, km: 2.2, rpm: 1320, tq: 2.7 } }, machine: { load: { kind: 'const', tq: 2, n: 1000, eta: 0.9 } },
   engine: { motor: { kind: 'ice', tq: 100, n: 5000, rpm: 3000 }, eD: 80, eS: 90, eps: 9.5, cyl: 4, ekind: 'otto', thr: 1 }, hand: { motor: { kind: 'torque', tq: 12, n: 60, rpm: 60 } },
   weight: { m: 20, motor: { kind: 'torque', tq: 4, n: 3000, rpm: 100 } }, spring: { M: 2, motor: { kind: 'torque', tq: 2, n: 3000, rpm: 100 } },
+  tcomp: { mf: 1, etaC: 0.85 }, tturb: { etaT: 0.88, a1: 16, zst: 1, rho: 0, nmax: 12000 }, tboil: { mf: 1, Tb: 350 },
   generator: { Pn: 3000, nn: 3000, ge: 0.9 }, heater: { hm: 2, hk: 5 }, hoist: { m: 50 }, carrier: { n: 3 }, tplate: { n: 3 }, tcam: { h: 8 }, hcyl: { st: 60, s: 0, F: 0 }, hvalve: { pos: 0 }, crank: { l: 40 }, ring: { loose: true }, clutch: { on: true }, brake: { on: true }, ratchet: { on: false } };
-const PROPS = ['z', 'zw', 'd', 'r', 'n', 'l', 'h', 'len', 'l0', 'l1', 'dir', 'on', 'loose', 'held', 'label', 'F', 'fw', 'm', 'J', 'rr', 'law', 'b1', 'bd', 'b2', 'q', 'pset', 'dn', 'pos', 'st', 's', 'dr', 'M', 'Fb', 'Pn', 'nn', 'ge', 'hm', 'hk', 'eD', 'eS', 'eps', 'cyl', 'ekind', 'thr'];
+const PROPS = ['z', 'zw', 'd', 'r', 'n', 'l', 'h', 'len', 'l0', 'l1', 'dir', 'on', 'loose', 'held', 'label', 'F', 'fw', 'm', 'J', 'rr', 'law', 'b1', 'bd', 'b2', 'q', 'pset', 'dn', 'pos', 'st', 's', 'dr', 'M', 'Fb', 'Pn', 'nn', 'ge', 'hm', 'hk', 'eD', 'eS', 'eps', 'cyl', 'ekind', 'thr', 'pr', 'mf', 'etaC', 'T3', 'dm', 'etaT', 'a1', 'zst', 'rho', 'nmax', 'pb', 'Tb', 'pk'];
 const MOTOR_KEYS = ['kind', 'rpm', 'tq', 'P', 'n', 'ks', 'km'], LOAD_KEYS = ['kind', 'tq', 'n', 'eta', 'table'];
 const pickKeys = (o, keys) => { const r = {}; for (const k of keys) if (o[k] != null) r[k] = Array.isArray(o[k]) ? o[k].map(x => Array.isArray(x) ? x.slice() : x) : o[k]; return r; };
 
@@ -108,7 +117,9 @@ const isLink = p => T(p).grp === 'tmm' || p.type === 'hcyl';   // a link of a me
 const isHyd = p => T(p).grp === 'hyd';
 const hydStill = p => isHyd(p) && !ty(p, 'hpump', 'hmotor', 'hcyl');   // hydraulic parts that do not turn
 const isDriver = p => p.type === 'tcrank' || p.type === 'tcam';   // links the drive solver turns
-const isVert = p => !isHz(p) && !isLin(p) && (!isLink(p) || isDriver(p)) && !hydStill(p);   // turns about a vertical axis
+const heatStill = p => T(p).grp === 'heat' && !ty(p, 'tcomp', 'tturb');
+const isPlant = p => isHyd(p) || T(p).grp === 'heat';   // hydraulic and heat-plant blocks: no motor, load or hold toggles
+const isVert = p => !isHz(p) && !isLin(p) && (!isLink(p) || isDriver(p)) && !hydStill(p) && !heatStill(p);   // turns about a vertical axis
 const kind = p => ty(p, 'spur', 'ring', 'diff') ? 'gear' : p.type === 'fric' ? 'fric' : null;
 const byId = id => parts.find(p => p.id === id);
 const mod = (a, n) => ((a % n) + n) % n;
@@ -138,6 +149,7 @@ const RO = p => {
     case 'sprocket': return p.z * CP / TAU;
     case 'htank': case 'hpump': case 'hmotor': case 'hrelief': case 'hthrottle': case 'hcheck': return 9;
     case 'hvalve': return 18;
+    case 'tcomp': case 'tburn': case 'tturb': case 'tboil': case 'tcond': case 'tfeed': case 'tstack': return 10;
     case 'hnode': return 2.5;
     case 'carrier': return HUB;
     case 'crank': return p.r + 4;

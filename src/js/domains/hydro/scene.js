@@ -18,7 +18,7 @@ const PORTS = {
   hvalve: [['P', -4, 9], ['T', 4, 9], ['A', -4, -9], ['B', 4, -9]], hthrottle: [['A', -9, 0], ['B', 9, 0]], hcheck: [['A', -9, 0], ['B', 9, 0]], hnode: [['', 0, 0]],
 };
 // ports of a part in its own frame: [name, x, y]
-const portsOf = p => ty(p, 'generator', 'heater') ? [['E', p.d / 2 + 3, 0]] : p.type === 'hcyl' ? [['A', 5, 5.5], ['B', CYL_L0(p) - 8, 5.5]] : PORTS[p.type] || [];
+const portsOf = p => T(p).grp === 'heat' ? (p.type === 'tstack' ? [['in', 0, 0]] : TH_PORTS) : ty(p, 'generator', 'heater') ? [['E', p.d / 2 + 3, 0]] : p.type === 'hcyl' ? [['A', 5, 5.5], ['B', CYL_L0(p) - 8, 5.5]] : PORTS[p.type] || [];
 function portPos(p, k) { const q = portsOf(p)[k], th = p.type === 'hcyl' ? linkTh(p) : isHyd(p) || T(p).grp === 'heat' ? p.dir || 0 : 0, c = Math.cos(th), s = Math.sin(th); return { x: p.x + c * q[1] - s * q[2], y: p.y + s * q[1] + c * q[2] }; }
 // the polyline of a pipe on the bench, and its length in metres (a change of layer adds the distance between layers)
 const pipePath = q => { const a = byId(q.a), b = byId(q.b); return a && b ? [portPos(a, q.pa), ...q.pts.map(v => ({ x: v[0], y: v[1] })), portPos(b, q.pb)] : []; };
@@ -94,7 +94,7 @@ function hydTick(dt) {
     p.s = Math.max(0, Math.min(p.st, p.s + v * dt * 1000)); p.len = CYL_L0(p) + p.s; undo.push([p, s0]);
     if ((s0 > 0 && s0 < p.st) !== (p.s > 0 && p.s < p.st) || (p.jam && v * p.jam < 0)) { restep = true; if (p.jam && v * p.jam < 0) delete p.jam; }
   }
-  for (const q of pipes) { const r = hyd.pipe.get(q.id); if (r) q.ph = (q.ph || 0) + r.v * dt; }
+  for (const q of pipes) { const r = hyd.pipe.get(q.id); if (r) q.ph = (q.ph || 0) + (r.va != null ? r.va : r.v) * dt; }   // gas runs too fast to draw at its own speed
   return { undo, restep };
 }
 // the linkage could not follow: put the cylinders back and hold them in the direction they were going

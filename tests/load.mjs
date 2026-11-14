@@ -7,7 +7,7 @@ export const CORE = ['core/units.js', 'core/explain.js', 'core/warn.js', 'core/p
 export const HYDRO = [...CORE, 'domains/pipes/loss.js', 'domains/hydro/net.js'];
 export const THERMO = ['model.js', 'domains/thermo/engine.js', 'domains/thermo/cycle.js'];
 export const TMM = [...CORE, 'domains/tmm/linkage.js', 'domains/tmm/cam.js'];
-export const DRIVES = ['strings.js', ...CORE, 'domains/pipes/loss.js', 'domains/hydro/net.js', 'domains/thermo/engine.js', 'domains/thermo/cycle.js', 'domains/tmm/linkage.js', 'domains/tmm/cam.js', 'model.js', 'paths.js', 'solver.js', 'power.js', 'domains/tmm/scene.js', 'domains/hydro/scene.js', 'domains/io/scene.js', 'domains/tmm/cycle.js', 'domains/tmm/panel.js', 'templates.js'];
+export const DRIVES = ['strings.js', ...CORE, 'domains/pipes/loss.js', 'domains/hydro/net.js', 'domains/thermo/engine.js', 'domains/thermo/cycle.js', 'domains/tmm/linkage.js', 'domains/tmm/cam.js', 'model.js', 'paths.js', 'solver.js', 'power.js', 'domains/tmm/scene.js', 'domains/hydro/scene.js', 'domains/io/scene.js', 'domains/thermo/scene.js', 'domains/tmm/cycle.js', 'domains/tmm/panel.js', 'templates.js'];
 
 class Path2D { moveTo() {} lineTo() {} arc() {} rect() {} closePath() {} }
 

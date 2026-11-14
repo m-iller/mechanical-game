@@ -13,6 +13,7 @@ const fmtT = v => v >= 100 ? v.toFixed(0) : v >= 10 ? v.toFixed(1) : v.toFixed(2
 const mm = v => `${+v.toFixed(2)} ${t('u.mm')}`;
 const rpmText = w => !w ? t('s.stopped') : `${fmt(Math.abs(w), Math.abs(w) < 10 ? 2 : 1)} ${t('u.rpm')} ${w > 0 ? t('s.cw') : t('s.ccw')}`;
 const sizeText = p => {
+  if (T(p).grp === 'heat') return p.type === 'tcomp' ? `π ${p.pr}` : p.type === 'tburn' ? `${p.T3} °C` : p.type === 'tboil' ? `${p.pb} bar` : p.type === 'tcond' ? `${p.pk} kPa` : '';
   if (isHyd(p)) return ty(p, 'hpump', 'hmotor') ? `${p.q} cm³` : p.type === 'hrelief' ? `${p.pset} bar` : p.type === 'hcyl' ? `⌀${p.d}×${p.st}` : ty(p, 'hthrottle') ? `⌀${p.dn}` : '';
   if (isLink(p)) return p.len != null ? `l${+p.len.toFixed(1)}` : '';
   switch (p.type) {
@@ -79,6 +80,7 @@ function planetFields(c) {
   return [slider(t('pl.want'), 2.5, 12, 0.05, () => +(pickRatio || 1 + ring.z / sun.z).toFixed(2), v => { pickRatio = v; fill(); }), labelled(t('pl.options'), box)];
 }
 function specRows(p) {
+  if (isHeat(p)) return [...thRows(p), ...(ty(p, 'tcomp', 'tturb') ? [[t('sp.n'), rpmText(p.w)]] : [])];
   if (IO_ROUND.includes(p.type)) return [...ioPartRows(p), [t('sp.n'), rpmText(p.w)]];
   if (isHyd(p)) return [...hydRows(p), ...(p.type === 'hcyl' ? linkRows(p) : []), ...(ty(p, 'hpump', 'hmotor') ? [[t('sp.n'), rpmText(p.w)]] : [])];
   if (isLink(p)) return [...linkRows(p), ...(isDriver(p) ? [[t('sp.n'), rpmText(p.w)]] : []), ...tmmCycleRows(p)];
@@ -314,9 +316,9 @@ function renderSel() {
       else body.append(labelled(t('sel.layer'), layerSeg(p.layer, l => { setLayer(p, l); commit(); })));
       const tg = [];
       if (T0.tog) tg.push(btn(t(`tog.${p.type}.${p.on ? 1 : 0}`), () => { p.on = !p.on; commit(); }, p.on));
-      if (!isLin(p) && !isSource(p) && !ty(p, 'machine', 'generator', 'heater', 'hoist') && (!isLink(p) || isDriver(p)) && !isHyd(p)) tg.push(btn(t('tog.motor'), () => { if (p.motor) delete p.motor; else { p.motor = { kind: 'speed', rpm: 60, tq: 2 }; delete p.load; } commit(); }, !!p.motor));
-      if (!isLin(p) && !isShaft(p) && !isLink(p) && !isHyd(p) && !isSource(p) && !ty(p, 'machine', 'brake', 'generator', 'hoist') && !p.motor) tg.push(btn(t('tog.load'), () => { if (p.load) delete p.load; else p.load = { kind: 'const', tq: 1, n: 1000, eta: 1 }; commit(); }, !!p.load));
-      if (!isLin(p) && !isLink(p) && !isHyd(p) && p.type !== 'brake') tg.push(btn(t('tog.held'), () => { p.held = !p.held; commit(); }, !!p.held));
+      if (!isLin(p) && !isSource(p) && !ty(p, 'machine', 'generator', 'heater', 'hoist') && (!isLink(p) || isDriver(p)) && !isPlant(p)) tg.push(btn(t('tog.motor'), () => { if (p.motor) delete p.motor; else { p.motor = { kind: 'speed', rpm: 60, tq: 2 }; delete p.load; } commit(); }, !!p.motor));
+      if (!isLin(p) && !isShaft(p) && !isLink(p) && !isPlant(p) && !isSource(p) && !ty(p, 'machine', 'brake', 'generator', 'hoist') && !p.motor) tg.push(btn(t('tog.load'), () => { if (p.load) delete p.load; else p.load = { kind: 'const', tq: 1, n: 1000, eta: 1 }; commit(); }, !!p.load));
+      if (!isLin(p) && !isLink(p) && !isPlant(p) && p.type !== 'brake') tg.push(btn(t('tog.held'), () => { p.held = !p.held; commit(); }, !!p.held));
       if (isVert(p) && !isShaft(p) && !ty(p, 'clutch', 'diff')) tg.push(btn(t('tog.loose'), () => { p.loose = !p.loose; commit(); }, !!p.loose));
       if (p.mount) tg.push(btn(t('tog.unmount'), () => { delete p.mount; commit(); }));
       if (tg.length) { const r = rowOf(...tg); r.classList.add('togs'); body.append(r); }
@@ -344,6 +346,7 @@ function renderSel() {
       }
       if (isHyd(p)) body.append(...hydFields(p));
       if (IO_ROUND.includes(p.type)) body.append(...ioFields(p));
+      if (isHeat(p)) body.append(...thFields(p));
       if (p.type === 'carrier') body.append(...planetFields(p));
       if (p.type === 'flywheel') body.append(slider(t('link.J'), 0, 10000, 0.0001, () => +flyJ(p).toPrecision(4), v => { p.J = v; commit(); }, unitSym('kgm2')));
       if (p.load) body.append(...loadFields(p));
@@ -614,10 +617,65 @@ function drawEngine(cvs, p) {
   g.fillStyle = C.ink; g.textAlign = 'left'; g.fillText(`M(φ), 0…720°   M̄ = ${fmtU(sw.tq.mean, 'Nm')}`, x0 + 4, t2 - 5); g.textAlign = 'right'; g.fillStyle = C.muted; g.fillText(`${fmtU(lo, 'Nm')} … ${fmtU(hi, 'Nm')}`, x1, t2 - 5);
 }
 
+/* ---------- gas-turbine and steam plant in the panel ---------- */
+const degC = Tk => `${fmtNum(Tk - 273.15, 3)} °C`, kJ = v => `${fmtNum(v / 1000, 3)} kJ/kg`;
+function thRows(p) {
+  const r = thermo.part.get(p.id), rows = []; if (!r) return rows;
+  const mv = [['ṁ', `${fmtNum(r.m, 3)} kg/s`]];
+  if (p.type === 'tcomp') {
+    rows.push([t('th.T2'), degC(r.T2), ex('T₂', r.T2, 'degC', 'T₂ = T₁ + T₁·(π^((k−1)/k) − 1) / η_c', [['T₁', r.T1, 'degC'], ['π', p.pr, ''], ['k', AIR.k, ''], ['η_c', p.etaC || 0.85, '']], ['ex.idealGas'])],
+      [t('th.p2'), fmtU(r.p2, 'bar')], [t('th.wc'), kJ(r.wc), ex('w_c', r.wc, '', 'w_c = c_p·(T₂ − T₁)', [['c_p', `${AIR.cp} J/(kg·K)`], ['T₂', r.T2, 'degC'], ['T₁', r.T1, 'degC']], ['ex.idealGas'])],
+      [t('th.Pc'), fmtU(r.Pc, 'power'), ex('P', r.Pc, 'power', 'P = ṁ·w_c', mv, ['ex.mFixed'])]);
+    if (r.turb) rows.push([t('th.Pnet'), fmtU(r.P, 'power'), ex('P', r.P, 'power', 'P = ṁ·(w_t − w_c)', [...mv, ['w_t', kJ(r.wt)], ['w_c', kJ(r.wc)]], ['ex.mFixed'])],
+      [t('th.eta'), `${fmtNum(100 * r.eta)} %`, ex('η', r.eta, '%', 'η = (w_t − w_c) / q,   q = c_p·(T₃ − T₂)', [['w_t', kJ(r.wt)], ['w_c', kJ(r.wc)], ['q', kJ(r.q)]], ['ex.idealGas', 'ex.brayton'])],
+      [t('th.bwr'), `${fmtNum(100 * r.bwr)} %`]);
+  } else if (p.type === 'tburn') rows.push([t('th.Tin'), degC(r.Tin)], [t('th.Q'), fmtU(r.Q, 'power'), ex('Q', r.Q, 'power', 'Q = ṁ·c_p·(T₃ − T₂)', [...mv, ['c_p', `${FLUE.cp} J/(kg·K)`], ['T₃', r.T3, 'degC'], ['T₂', r.Tin, 'degC']], ['ex.idealGas'])], [t('th.pin'), fmtU(r.pin, 'bar')]);
+  else if (p.type === 'tturb') {
+    const st = stageOfTurbine(p), D = 180 / Math.PI;
+    rows.push([t('th.T3'), degC(r.T3)], [t('th.T4'), degC(r.T4), r.steam ? undefined : ex('T₄', r.T4, 'degC', 'T₄ = T₃ − η_t·T₃·(1 − (p₄/p₃)^((k−1)/k))', [['T₃', r.T3, 'degC'], ['p₃', r.p3, 'bar'], ['p₄', r.p4, 'bar'], ['k', FLUE.k, ''], ['η_t', r.etaT, '']], ['ex.idealGas'])],
+      [t('th.pp'), `${fmtU(r.p3, 'bar')} → ${fmtU(r.p4, 'bar')}`], [t('th.wt'), kJ(r.wt)], [t('th.Pt'), fmtU(r.Pt, 'power'), ex('P', r.Pt, 'power', 'P = ṁ·w_t', mv, ['ex.mFixed'])]);
+    if (r.steam) rows.push([t('th.x4'), fmtNum(r.x4, 3)]);
+    if (st) rows.push([t('th.u'), fmtU(st.u, 'm/s'), ex('u', st.u, 'm/s', 'u = ω·d_m / 2', [['ω', Math.abs(p.w) * RPM, 'rpm'], ['d_m', p.dm / 1000, 'mm']], [])],
+      [t('th.c1'), fmtU(st.c1, 'm/s'), ex('c₁', st.c1, 'm/s', 'c₁ = φ·√(2·(1 − ρ)·h₀)', [['φ', 0.95, ''], ['ρ', p.rho || 0, ''], ['h₀', kJ(st.h0)]], ['ex.stage'])],
+      [t('th.b1'), `${fmtNum(st.b1 * D, 3)}°`], [t('th.c2'), `${fmtU(st.c2, 'm/s')}, α₂ = ${fmtNum(st.a2 * D, 3)}°`],
+      [t('th.x'), `${fmtNum(st.x, 3)} (${t('th.best')} ${fmtNum(st.xopt, 3)})`, ex('u/c_f', st.x, '', 'c_f = √(2·h₀)', [['u', st.u, 'm/s'], ['h₀', kJ(st.h0)]], ['ex.stageOpt'])],
+      [t('th.etaU'), `${fmtNum(100 * st.eta)} %`, ex('η_u', st.eta, '%', 'η_u = u·(c₁u + c₂u) / h₀', [['u', st.u, 'm/s'], ['c₁u', st.c1u, 'm/s'], ['c₂u', st.c2u, 'm/s'], ['h₀', kJ(st.h0)]], ['ex.stage'])]);
+  } else if (p.type === 'tboil') rows.push([t('th.Tsat'), degC(r.Tb)], [t('th.Q'), fmtU(r.Q, 'power'), ex('Q', r.Q, 'power', 'Q = ṁ·(h₃ − h₂)', [...mv, ['h₃', kJ(r.h3)], ['h₂', kJ(r.h2)]], ['ex.steam'])],
+    [t('th.Pnet'), fmtU(r.P, 'power')], [t('th.eta'), `${fmtNum(100 * r.eta)} %`, ex('η', r.eta, '%', 'η = (w_t − w_p) / q', [['w_t', kJ(r.wt)], ['w_p', kJ(r.wp)], ['q', kJ(r.q)]], ['ex.steam', 'ex.rankine'])]);
+  else if (p.type === 'tcond') rows.push([t('th.Tc'), degC(r.T)], [t('th.Qc'), fmtU(r.Q, 'power')], [t('th.x4'), fmtNum(r.x4, 3)]);
+  else if (p.type === 'tfeed') rows.push([t('th.Pp'), fmtU(r.P, 'power'), ex('P', r.P, 'power', 'P = ṁ·v·(p_b − p_c) / η_p', [...mv, ['η_p', 0.8, '']], ['ex.steam'])]);
+  return rows.filter(x => x).map(x => x.filter(y => y !== undefined));
+}
+function thFields(p) {
+  const out = [], num = (key, k, lo, hi, step, unit, def) => slider(t(key), lo, hi, step, () => p[k] == null ? def : p[k], v => { p[k] = v; commit(); }, unit);
+  if (p.type === 'tcomp') out.push(num('th.mf', 'mf', 0.01, 1000, 0.01, 'kg/s', 1), num('th.etaC', 'etaC', 0.5, 1, 0.01, '', 0.85));
+  if (p.type === 'tboil') out.push(num('th.mf', 'mf', 0.01, 1000, 0.01, 'kg/s', 1), num('th.Tb', 'Tb', 100, 650, 5, '°C', 350));
+  if (p.type === 'tturb') {
+    out.push(num('th.etaT', 'etaT', 0.5, 1, 0.01, '', 0.88), num('th.z', 'zst', 1, 30, 1, '', 1), num('th.a1', 'a1', 8, 40, 0.5, '°', 16), num('th.rho', 'rho', 0, 0.7, 0.05, '', 0), num('motor.limit', 'nmax', 100, 60000, 50, t('u.rpm'), 12000));
+    const gc = el('canvas', null, { className: 'graphs' }); out.push(gc); selRefresh.push(() => drawTriangles(gc, p));
+  }
+  out.push(rowOf(btn(t('hy.lay'), () => { pipeDraft = { a: null, pts: [], cur: null }; sel = new Set(); ui(); })));
+  return out;
+}
+// speed triangles of the stage: inlet (c₁, w₁) above the line of rotation, outlet (c₂, w₂) drawn from the same point
+function drawTriangles(cvs, p) {
+  const st = stageOfTurbine(p), dpr2 = window.devicePixelRatio || 1, Wc = cvs.clientWidth || 300, Hc = 170; cvs.hidden = !st; if (!st) return;
+  cvs.style.height = Hc + 'px'; if (cvs.width !== Math.round(Wc * dpr2)) { cvs.width = Math.round(Wc * dpr2); cvs.height = Math.round(Hc * dpr2); }
+  const g = cvs.getContext('2d'); g.setTransform(dpr2, 0, 0, dpr2, 0, 0); g.clearRect(0, 0, Wc, Hc); g.font = `11px ${C.mono}`; g.textBaseline = 'middle';
+  const xs = [st.c1u, st.w1u, -st.w2u, -st.c2u, 0], lo = Math.min(...xs), hi = Math.max(...xs), ya = Math.max(st.c1a, st.c2a), k = Math.min((Wc - 50) / (hi - lo || 1), (Hc - 44) / (ya || 1)), ox = 25 - lo * k, oy = 22;
+  const vec = (x, y, colr, name, dy = 0) => { const X = ox + x * k, Y = oy + y * k, a = Math.atan2(Y - oy, X - ox); g.strokeStyle = g.fillStyle = colr; g.lineWidth = 1.6; g.beginPath(); g.moveTo(ox, oy); g.lineTo(X, Y); g.stroke();
+    g.beginPath(); g.moveTo(X, Y); g.lineTo(X - 7 * Math.cos(a - 0.35), Y - 7 * Math.sin(a - 0.35)); g.lineTo(X - 7 * Math.cos(a + 0.35), Y - 7 * Math.sin(a + 0.35)); g.closePath(); g.fill(); g.textAlign = 'center'; g.fillText(name, (ox + X) / 2 + 9 * Math.sin(a), (oy + Y) / 2 - 9 * Math.cos(a) + dy); };
+  const uLine = (x0, x1, y) => { g.strokeStyle = C.muted; g.lineWidth = 1.2; g.setLineDash([4, 3]); g.beginPath(); g.moveTo(ox + x0 * k, oy + y * k); g.lineTo(ox + x1 * k, oy + y * k); g.stroke(); g.setLineDash([]); g.fillStyle = C.muted; g.textAlign = 'center'; g.fillText('u', ox + (x0 + x1) / 2 * k, oy + y * k + 9); };
+  uLine(st.w1u, st.c1u, st.c1a); uLine(-st.w2u, -st.c2u, st.c2a);
+  vec(st.c1u, st.c1a, C.ink, 'c₁'); vec(st.w1u, st.c1a, C.select, 'w₁'); vec(-st.w2u, st.c2a, C.select, 'w₂'); vec(-st.c2u, st.c2a, C.brass, 'c₂');
+  g.fillStyle = C.muted; g.textAlign = 'left'; g.fillText(`u = ${fmtU(st.u, 'm/s')}   η_u = ${fmtNum(100 * st.eta)} %`, 6, Hc - 9);
+}
+
 /* ---------- pointer input ---------- */
 const pts = new Map(); let drag = null, pan = null, pinch = null, holdTimer = null;
 const pos = e => { const r = cv.getBoundingClientRect(); return { x: e.clientX - r.left, y: e.clientY - r.top }; };
 function hitTop(g, w) {
+  if (T(g).grp === 'heat') return Math.hypot(w.x - g.x, w.y - g.y) < 11;
   if (isHyd(g) && !isLink(g)) { const u = unit(g.dir || 0), dx = w.x - g.x, dy = w.y - g.y, lx = dx * u[0] + dy * u[1], ly = -dx * u[1] + dy * u[0]; return g.type === 'hvalve' ? Math.abs(lx) < 19 && Math.abs(ly) < 8 : g.type === 'hnode' ? Math.hypot(lx, ly) < 3.5 : g.type === 'htank' ? Math.abs(lx) < 8 && ly > -2 && ly < 9 : Math.hypot(lx, ly) < 10; }
   if (isLink(g)) return tmmHit(g, w, Math.max(3.2, 9 / view.scale)) != null;
   const b = boxOf(g);
@@ -768,7 +826,7 @@ $('add').onclick = () => {
   const type = $('new-type').value, nt = TYPES[type];
   const g = addPart(type, { ...(nt.key ? { [nt.key]: +$('new-z').value } : {}), x: 0, y: 0, layer: activeLayer, ...(type === 'shaft' ? { l0: activeLayer, l1: Math.min(layerCount - 1, activeLayer + 1) } : {}) });
   Object.assign(g, freeSpot(tipR(g) + reach(g)));
-  if (!parts.some(p => p.motor) && !isLin(g) && !isLink(g) && !isHyd(g) && !ty(g, 'carrier', 'brake', 'machine')) g.motor = { kind: 'speed', rpm: 60, tq: 2 };   // the first part on an empty bench gets the motor
+  if (!parts.some(p => p.motor) && !isLin(g) && !isLink(g) && !isPlant(g) && !ty(g, 'generator', 'heater', 'hoist') && !ty(g, 'carrier', 'brake', 'machine')) g.motor = { kind: 'speed', rpm: 60, tq: 2 };   // the first part on an empty bench gets the motor
   sel = new Set([g.id]); commit();
 };
 $('tpl-add').onclick = () => { const c = toWorld(W / 2, topMid()); freeze(); const made = insertTemplate($('tpl').value, c.x, c.y); sel = new Set(made.map(p => p.id)); commit(); fit(); };
@@ -815,7 +873,7 @@ function start(d) {
       const tk = hydTick(dt); ioTick(dt); let ok = tmmStep();
       if (!ok && tk.undo.some(([q, s0]) => q.s !== s0)) { hydJam(tk.undo); tk.restep = true; ok = tmmStep(); }   // a cylinder ran the linkage to its limit: it stops there, the crank's time goes on
       if (!ok) { clock = c0; place(); }
-      if (tk.restep) { hydroStep(); warnings = runChecks({ parts, power }); ui(); }
+      if (tk.restep) { hydroStep(); elStep(); thermoPipes(); warnings = runChecks({ parts, power }); ui(); }
       if (ok === tmmStuck) { tmmStuck = !ok; ui(); }
       if (graphTick && ++frameNo % 4 === 0) graphTick();
     }

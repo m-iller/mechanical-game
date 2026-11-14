@@ -265,3 +265,23 @@ function ioDraw(g, s) {
   if (portsOf(g).length) hydPorts(g, s);
   return true;
 }
+
+/* ---------- gas-turbine and steam plant blocks ---------- */
+function thDraw(g, s) {
+  const col = collide.has(g.id) ? C.jam : C.ink, w = 2 / s, thin = 1 / s, an = angle(g) - (g.dir || 0);
+  ctx.save(); ctx.translate(g.x, g.y); ctx.rotate(g.dir || 0); ctx.strokeStyle = col; ctx.fillStyle = col; ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.lineWidth = w;
+  const seg = (x0, y0, x1, y1, lw = w) => { ctx.lineWidth = lw; ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x1, y1); ctx.stroke(); };
+  const poly = pts => { ctx.beginPath(); pts.forEach((q, i) => i ? ctx.lineTo(q[0], q[1]) : ctx.moveTo(q[0], q[1])); ctx.closePath(); ctx.fillStyle = C.paper; ctx.fill(); ctx.lineWidth = w; ctx.stroke(); ctx.fillStyle = col; };
+  const flame = (x, y, k) => { ctx.beginPath(); ctx.moveTo(x, y - 4 * k); ctx.quadraticCurveTo(x + 3 * k, y, x, y + 3 * k); ctx.quadraticCurveTo(x - 3 * k, y, x, y - 4 * k); ctx.fillStyle = C.brass; ctx.fill(); ctx.fillStyle = col; };
+  const stubs = () => { seg(-12, 0, -8, 0); seg(8, 0, 12, 0); };
+  switch (g.type) {
+    case 'tcomp': stubs(); poly([[-8, -9], [8, -4], [8, 4], [-8, 9]]); seg(0, 0, 3 * Math.cos(an), 3 * Math.sin(an), thin); break;   // narrows the way the gas goes
+    case 'tturb': stubs(); poly([[-8, -4], [8, -9], [8, 9], [-8, 4]]); seg(0, 0, 3 * Math.cos(an), 3 * Math.sin(an), thin); break;   // widens the way the gas goes
+    case 'tburn': stubs(); ctx.beginPath(); ctx.arc(0, 0, 8, 0, TAU); ctx.fillStyle = C.paper; ctx.fill(); ctx.lineWidth = w; ctx.stroke(); flame(0, 0.5, 1.2); break;
+    case 'tboil': stubs(); poly([[-8, -8], [8, -8], [8, 8], [-8, 8]]); ctx.lineWidth = thin * 1.4; ctx.beginPath(); ctx.moveTo(-6, -2); for (let i = 0; i <= 6; i++) ctx.lineTo(-6 + 2 * i, i % 2 ? -5 : -1); ctx.stroke(); flame(0, 4, 0.9); break;
+    case 'tcond': stubs(); ctx.beginPath(); ctx.arc(0, 0, 8, 0, TAU); ctx.fillStyle = C.paper; ctx.fill(); ctx.lineWidth = w; ctx.stroke(); ctx.lineWidth = thin * 1.4; ctx.beginPath(); ctx.moveTo(0, -11); for (let i = 0; i <= 6; i++) ctx.lineTo(i % 2 ? 3 : -3, -6 + 2 * i); ctx.lineTo(0, 11); ctx.stroke(); break;
+    case 'tfeed': stubs(); ctx.beginPath(); ctx.arc(0, 0, 8, 0, TAU); ctx.fillStyle = C.paper; ctx.fill(); ctx.lineWidth = w; ctx.stroke(); ctx.fillStyle = col; ctx.beginPath(); ctx.moveTo(8, 0); ctx.lineTo(3.6, -2.7); ctx.lineTo(3.6, 2.7); ctx.closePath(); ctx.fill(); break;
+    case 'tstack': seg(0, 0, 0, -14); seg(-4, -14, 4, -14); seg(0, -17, 0, -22, thin); seg(0, -22, -1.6, -19.5, thin); seg(0, -22, 1.6, -19.5, thin); break;
+  }
+  ctx.restore(); hydPorts(g, s);
+}

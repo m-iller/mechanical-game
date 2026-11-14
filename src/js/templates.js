@@ -118,6 +118,23 @@ const TEMPLATES = {
     addPipe(g, 0, h, 0, { fluid: 'el', pts: [[x + 60, y], [x + 60, y - 30], [x + 113, y - 30]] });
     return [e, addPart('shaft', { x, y, l0: L, l1: L + 2 }), f, g, h];
   } },
+  /* gas-turbine set (Brayton): compressor and turbine on one shaft with a generator; air goes compressor → combustor → turbine → stack.
+     2 kg/s, pressure ratio 8, 1000 °C: about 480 kW left after the compressor has taken its share. */
+  gasturbine: { layers: 3, build(x, y, L) {
+    const c = addPart('tcomp', { x, y, layer: L, pr: 8, mf: 2, dir: -Math.PI / 2 }), tb = addPart('tturb', { x, y, layer: L + 1, dm: 700, zst: 3, nmax: 6500 }), g = addPart('generator', { x, y, layer: L + 2, Pn: 450000, nn: 6000, ge: 0.95 });
+    const cc = addPart('tburn', { x: x - 45, y: y - 45, layer: L + 1, T3: 1000, dir: Math.PI }), st = addPart('tstack', { x: x + 60, y, layer: L + 1 }), h = addPart('heater', { x: x + 70, y: y + 60, layer: L + 2, d: 40, hm: 500, hk: 1500 });
+    addPipe(c, 1, cc, 0, { d: 160, fluid: 'air', pts: [[x, y - 45]] }); addPipe(cc, 1, tb, 0, { d: 200, fluid: 'flue', pts: [[x - 70, y - 45], [x - 70, y]] }); addPipe(tb, 1, st, 0, { d: 450, fluid: 'flue' });
+    addPipe(g, 0, h, 0, { fluid: 'el', pts: [[x + 40, y], [x + 40, y + 30], [x + 93, y + 30]] });
+    return [c, addPart('shaft', { x, y, l0: L, l1: L + 2 }), tb, g, cc, st, h];
+  } },
+  // steam plant (Rankine): boiler, turbine with a generator, condenser, feed pump
+  steam: { layers: 2, build(x, y, L) {
+    const b = addPart('tboil', { x: x - 60, y: y - 40, layer: L, pb: 30, Tb: 350, mf: 1 }), tb = addPart('tturb', { x, y, layer: L, dm: 1500, zst: 6, etaT: 0.85, nmax: 3300, dir: Math.PI / 2 }), g = addPart('generator', { x, y, layer: L + 1, Pn: 800000, nn: 3000, ge: 0.95 });
+    const cd = addPart('tcond', { x, y: y + 50, layer: L, pk: 10, dir: Math.PI }), fp = addPart('tfeed', { x: x - 60, y: y + 50, layer: L, dir: Math.PI }), h = addPart('heater', { x: x + 80, y, layer: L + 1, d: 40, hm: 800, hk: 2500 });
+    addPipe(b, 1, tb, 0, { d: 80, fluid: 'steam', pts: [[x, y - 40]] }); addPipe(tb, 1, cd, 0, { d: 800, fluid: 'steam', pts: [[x, y + 30], [x + 12, y + 30]] }); addPipe(cd, 1, fp, 0, { d: 40, fluid: 'water' }); addPipe(fp, 1, b, 0, { d: 30, fluid: 'water', pts: [[x - 85, y + 50], [x - 85, y - 40]] });
+    addPipe(g, 0, h, 0, { fluid: 'el' });
+    return [b, tb, addPart('shaft', { x, y, l0: L, l1: L + 1 }), g, cd, fp, h];
+  } },
   // four-bar: crank 20, coupler 70, rocker 50, frame 80 — a crank-rocker by Grashof's rule
   fourbar: { layers: 1, build(x, y, L) {
     const a = 20, b = 70, c = 50, d = 80, B = { x, y: y - a }, dx = x + d - B.x, dy = y - B.y, f = Math.hypot(dx, dy), k = (b * b - c * c + f * f) / (2 * f), h = Math.sqrt(b * b - k * k);

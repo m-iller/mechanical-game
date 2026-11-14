@@ -48,7 +48,6 @@ function elStep() {
 // one step of time: heaters warm up or cool down; wires' marks run
 function ioTick(dt) {
   for (const [id, r] of elec.heat) { const h = byId(id); if (h) h.T = (h.T == null ? T_AMB : h.T) + (r.P - h.hk * (h.T - T_AMB)) / (h.hm * C_STEEL) * dt; }
-  for (const q of pipes) if (isWire(q)) { const r = hyd.pipe.get(q.id); if (r) q.ph = (q.ph || 0) + r.v * dt; }
 }
 // excess work of a piston engine's torque over its cycle, for the flywheel: ΔA = max − min of ∫(M − M_mean) dφ
 function engineSwing(p) {

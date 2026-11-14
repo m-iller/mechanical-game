@@ -124,6 +124,16 @@ if (!(heat > 20.5) || await page.locator('canvas.graphs').count() !== 1) fail('g
 if (process.env.SHOT_GEN) { await page.evaluate(() => { setActive(0); pick([parts[0].id]); setActive(2); }); await page.waitForTimeout(100); await page.screenshot({ path: process.env.SHOT_GEN }); }
 await page.evaluate(() => { viewMode = 'both'; });
 
+// gas-turbine set: runs, gas moves along the lines, the turbine panel draws its speed triangles; the steam plant runs too
+await page.evaluate(() => { resetScene(3); const m = insertTemplate('gasturbine', 0, 0); solve(); viewMode = 'top'; fit(); setActive(1); pick([m[2].id]); });
+await page.waitForTimeout(600);
+s = await state(); if (s.lock || s.warnings.length) fail('gas-turbine demo: ' + s.lock + JSON.stringify(s.warnings));
+if (!(await page.evaluate(() => pipes.every(q => Math.abs(q.ph) > 0.01))) || await page.locator('canvas.graphs').count() !== 1) fail('gas-turbine demo: no flow on the lines or no triangles');
+if (process.env.SHOT_GT) await page.screenshot({ path: process.env.SHOT_GT });
+await page.evaluate(() => { resetScene(2); insertTemplate('steam', 0, 0); solve(); fit(); }); await page.waitForTimeout(200);
+s = await state(); if (s.lock || s.warnings.some(w => w[0] !== 'info')) fail('steam demo: ' + s.lock + JSON.stringify(s.warnings));
+await page.evaluate(() => { viewMode = 'both'; });
+
 // power balance: the conveyor demo runs, shows explained figures, and the "where from" box opens
 await page.evaluate(() => { resetScene(5); const m = insertTemplate('conveyor', 0, 0); solve(); fit(); pick([m[m.length - 1].id]); });
 await page.waitForTimeout(60);

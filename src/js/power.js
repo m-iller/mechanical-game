@@ -15,9 +15,9 @@ let power = { has: false, src: new Map(), load: new Map(), flow: new Map() }, wa
 /* Everything on the bench for the state it is in. The hydraulic network and the drive lean on each other: the pump's flow needs
    the shaft speed, the shaft's load needs the pump pressure. A few passes settle it; the last network solution is the next start. */
 function solve() {
-  tmmLoads(); hydSync(); ioSync();
+  tmmLoads(); hydSync(); ioSync(); thermoStep();
   for (let pass = 0; pass < 5; pass++) { hydLoads(); solveDrive(); if (hydroStep() < 0.005) break; }
-  elStep();
+  elStep(); thermoPipes();
   tmmStep(); tmmAnalyze();
   warnings = runChecks({ parts, power });
 }
@@ -68,8 +68,8 @@ addCheck('motor', ({ parts, power }) => {
   for (const p of parts) if (p.motor) {
     const r = power.src.get(p.id); if (!r) continue;
     if (r.stalled) out.push({ level: 'error', code: 'w.stall', text: t('w.stall', { a: p.name }), ids: [p.id] });
-    else if (r.ratio > 1.05) out.push({ level: 'warn', code: 'w.overload', text: t('w.overload', { a: p.name, k: fmtNum(r.ratio, 3) }), ids: [p.id] });
-    if (!r.stalled && !r.starts) out.push({ level: 'warn', code: 'w.nostart', text: t('w.nostart', { a: p.name }), ids: [p.id] });
+    else if (r.ratio > 1.05 && !p.motor.auto) out.push({ level: 'warn', code: 'w.overload', text: t('w.overload', { a: p.name, k: fmtNum(r.ratio, 3) }), ids: [p.id] });
+    if (!r.stalled && !r.starts && !p.motor.auto) out.push({ level: 'warn', code: 'w.nostart', text: t('w.nostart', { a: p.name }), ids: [p.id] });
   }
   return out;
 });

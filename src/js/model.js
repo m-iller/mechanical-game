@@ -50,6 +50,8 @@ const TYPES = {
   tslider:  { pre: 'L',  grp: 'tmm',    dir: 1 },
   tcoul:    { pre: 'L',  grp: 'tmm',    key: 'len', lim: [5, 2000, 0.5], def: 90, dir: 1 },         // slotted link: a stone slides along it
   tstone:   { pre: 'L',  grp: 'tmm',    dir: 1 },
+  tcam:     { pre: 'L',  grp: 'tmm',    key: 'r',   lim: [5, 300, 0.5], def: 20, key2: 'h', lim2: [1, 100], dir: 1 },   // plate cam: base radius and lift; turns like a crank
+  tfollow:  { pre: 'L',  grp: 'tmm',    key: 'rr',  lim: [0, 30, 0.5], def: 4, dir: 1 },                           // translating follower with a roller
   tplate:   { pre: 'L',  grp: 'tmm',    key: 'r',   lim: [4, 500, 1], def: 20, key2: 'n', lim2: [3, 8], dir: 1 },   // rigid link with n joints
   crank:    { pre: 'K',  grp: 'mech',   key: 'r',   lim: [3, 150, 1], def: 14, key2: 'l', lim2: [10, 600], dir: 1 },
   cam:      { pre: 'CM', grp: 'mech',   key: 'h',   lim: [1, 40, 1], def: 8,  dir: 1 },
@@ -58,8 +60,8 @@ const TYPES = {
 };
 const GROUPS = ['io', 'gears', 'flex', 'shafts', 'tmm', 'mech'];
 // a small catalogue motor (0.37 kW, 4 poles) and a machine that takes a constant 2 N·m
-const DEFAULTS = { emotor: { motor: { kind: 'induction', P: 370, n: 1320, ks: 2.2, km: 2.2, rpm: 1320, tq: 2.7 } }, machine: { load: { kind: 'const', tq: 2, n: 1000, eta: 0.9 } }, carrier: { n: 3 }, tplate: { n: 3 }, crank: { l: 40 }, ring: { loose: true }, clutch: { on: true }, brake: { on: true }, ratchet: { on: false } };
-const PROPS = ['z', 'zw', 'd', 'r', 'n', 'l', 'h', 'len', 'l0', 'l1', 'dir', 'on', 'loose', 'held', 'label', 'F', 'fw', 'm', 'J'];
+const DEFAULTS = { emotor: { motor: { kind: 'induction', P: 370, n: 1320, ks: 2.2, km: 2.2, rpm: 1320, tq: 2.7 } }, machine: { load: { kind: 'const', tq: 2, n: 1000, eta: 0.9 } }, carrier: { n: 3 }, tplate: { n: 3 }, tcam: { h: 8 }, crank: { l: 40 }, ring: { loose: true }, clutch: { on: true }, brake: { on: true }, ratchet: { on: false } };
+const PROPS = ['z', 'zw', 'd', 'r', 'n', 'l', 'h', 'len', 'l0', 'l1', 'dir', 'on', 'loose', 'held', 'label', 'F', 'fw', 'm', 'J', 'rr', 'law', 'b1', 'bd', 'b2'];
 const MOTOR_KEYS = ['kind', 'rpm', 'tq', 'P', 'n', 'ks', 'km'], LOAD_KEYS = ['kind', 'tq', 'n', 'eta', 'table'];
 const pickKeys = (o, keys) => { const r = {}; for (const k of keys) if (o[k] != null) r[k] = Array.isArray(o[k]) ? o[k].map(x => Array.isArray(x) ? x.slice() : x) : o[k]; return r; };
 
@@ -80,7 +82,8 @@ const T = p => TYPES[p.type];
 const isShaft = p => p.type === 'shaft';
 const isHz = p => !!T(p).hz, isLin = p => !!T(p).lin;
 const isLink = p => T(p).grp === 'tmm';              // a link of a mechanism
-const isVert = p => !isHz(p) && !isLin(p) && (!isLink(p) || p.type === 'tcrank');   // turns about a vertical axis
+const isDriver = p => p.type === 'tcrank' || p.type === 'tcam';   // links the drive solver turns
+const isVert = p => !isHz(p) && !isLin(p) && (!isLink(p) || isDriver(p));   // turns about a vertical axis
 const kind = p => ty(p, 'spur', 'ring', 'diff') ? 'gear' : p.type === 'fric' ? 'fric' : null;
 const byId = id => parts.find(p => p.id === id);
 const mod = (a, n) => ((a % n) + n) % n;
@@ -112,7 +115,7 @@ const RO = p => {
     case 'crank': return p.r + 4;
     case 'cam': return CB + p.h;
     case 'geneva': return GA + 3;
-    case 'shaft': case 'pivot': case 'guide': case 'tcrank': case 'trod': case 'trocker': case 'tslider': case 'tcoul': case 'tstone': case 'tplate': return 3;
+    case 'shaft': case 'pivot': case 'guide': case 'tcrank': case 'trod': case 'trocker': case 'tslider': case 'tcam': case 'tfollow': case 'tcoul': case 'tstone': case 'tplate': return 3;
     case 'rack': case 'worm': case 'hshaft': return 0;
     default: return M * p.z / 2;
   }
@@ -168,7 +171,7 @@ function place() {
 // bake the current motion into the rest angles, so editing never makes anything jump
 function freeze() {
   jit = 0;
-  for (const p of parts) { p.free = angle(p); for (const k of ['o', 'a', 'b']) if (p[k]) p[k].free = angle(p[k]); if (p.type === 'tcrank') p.dir = wrap(p.dir + (p.w || 0) * clock); }
+  for (const p of parts) { p.free = angle(p); for (const k of ['o', 'a', 'b']) if (p[k]) p[k].free = angle(p[k]); if (isDriver(p)) p.dir = wrap(p.dir + (p.w || 0) * clock); }
   for (const L of links) L.free = linkPos(L);
   place(); clock = 0; rest();
 }
@@ -248,7 +251,7 @@ function serialize() {
     parts: parts.map(p => {
       const o = { id: p.id, name: p.name, type: p.type, x: p.x, y: p.y, layer: p.layer, free: angle(p) };
       for (const k of PROPS) if (p[k] != null) o[k] = p[k];
-      if (p.type === 'tcrank') o.dir = wrap(p.dir + (p.w || 0) * (clock + jit));   // a crank is saved where it stands
+      if (isDriver(p)) o.dir = wrap(p.dir + (p.w || 0) * (clock + jit));   // a crank is saved where it stands
       if (p.motor) o.motor = pickKeys(p.motor, MOTOR_KEYS);
       if (p.load) o.load = pickKeys(p.load, LOAD_KEYS);
       if (p.mount) o.mount = { ...p.mount };

@@ -4,6 +4,14 @@
 const dynCache = { key: '', val: null };
 // the cycle of the mechanism a link belongs to, with the series worth plotting for that link
 function tmmSeries(p) {
+  const cam = p.type === 'tcam' ? p : p.type === 'tfollow' ? camOf(p) : null;
+  if (cam) { // a cam and its follower: the law itself over one turn
+    const f = p.type === 'tfollow' ? p : parts.find(q => q.type === 'tfollow' && camOf(q) === cam), rr = f ? f.rr || 0 : 0, w = Math.abs(cam.w) * RPM, sg = cam.w < 0 ? -1 : 1, N = 180;
+    const d = [...Array(N)].map((_, k) => camS(cam, TAU * k / N));
+    return { cam, f, rr, w, cyc: { ok: true, N }, chk: camCheck(cam, rr), at: () => mod(linkTh(cam) - (f ? f.dir : 0), TAU) / TAU, series: [
+      { name: 's', unit: 'mm', data: d.map(x => x[0] * 1e-3) }, { name: 'v', unit: 'm/s', data: d.map(x => x[1] * w * sg * 1e-3) }, { name: 'a', unit: 'm/s2', data: d.map(x => x[2] * w * w * 1e-3) },
+      { name: 'α', unit: 'deg', data: d.map((x, k) => camPressure(cam, rr, TAU * k / N)) }] };
+  }
   const c = p.type === 'tcrank' ? p : crankOf(p); if (!c || linkFixed(p) && p !== c) return null;
   const cyc = tmmCycle(c); if (!cyc.ok) return { cyc, series: [] };
   const w = Math.abs(c.w) * RPM, key = [c.id, p.id, w, cyc.Q.length, cyc.Q[0] && cyc.Q[0][0], cyc.Q[90] && cyc.Q[90][0], parts.filter(isLink).map(q => [q.F, q.fw, q.m, q.len]).join(), parts.filter(q => q.type === 'flywheel').map(q => [q.d, q.J, q.w]).join()].join('|');
@@ -25,6 +33,17 @@ const peakOf = a => a.reduce((m, v) => Math.max(m, Math.abs(v)), 0);
 function tmmCycleRows(p) {
   const S = tmmSeries(p), rows = []; if (!S) return rows;
   if (!S.cyc.ok) return [[t('io.cycle'), t('io.noTurn')]];
+  if (S.cam) {
+    const c = S.cam, k = S.chk, D = 180 / Math.PI, wv0 = [['ω', S.w, 'rpm']], R0 = [['r', c.r * 1e-3, 'mm'], ['r_r', S.rr * 1e-3, 'mm']];
+    return [
+      [t('io.lift'), fmtU(c.h * 1e-3, 'mm')],
+      [t('io.vmax'), fmtU(k.vmax * S.w * 1e-3, 'm/s'), ex('v', k.vmax * S.w * 1e-3, 'm/s', 'v = (ds/dφ)·ω', [["s′_max", k.vmax * 1e-3, 'mm'], ...wv0], ['ex.camLaw'])],
+      [t('io.amax'), fmtU(k.amax * S.w * S.w * 1e-3, 'm/s2'), ex('a', k.amax * S.w * S.w * 1e-3, 'm/s2', 'a = (d²s/dφ²)·ω²', [["s″_max", k.amax * 1e-3, 'mm'], ...wv0], ['ex.camLaw', 'ex.constW'])],
+      [t('io.alpha'), `${fmtNum(k.alpha * D)}°`, ex('α', k.alpha, 'deg', "tan α = s′ / (r + r_r + s)", R0, ['ex.camInline', 'ex.camAllow'])],
+      [t('io.rmin'), fmtU(Math.max(0, k.rmin) * 1e-3, 'mm'), ex('r_min', Math.max(0, k.rmin) * 1e-3, 'mm', "r_min = max(|s′| / tan[α] − s) − r_r,   [α] = 30°", [['r_r', S.rr * 1e-3, 'mm']], ['ex.camInline'])],
+      [t('io.rho'), isFinite(k.rho) ? fmtU(k.rho * 1e-3, 'mm') : '∞', ex('ρ_min', k.rho * 1e-3, 'mm', "ρ = (R² + R′²)^1.5 / (R² + 2R′² − R·R″),   R = r + r_r + s", R0, ['ex.camRho'])],
+    ];
+  }
   const w = S.w, wv = [['ω', w, 'rpm']];
   if (SLIDES.includes(p.type)) {
     const [s, v, a] = S.series;
@@ -60,6 +79,9 @@ function tmmGrashof(c) {
 }
 // load and mass fields of a link
 function tmmFields(p) {
+  if (p.type === 'tcam') { const P = { ...CAM_DEF, ...p }, ang = (key, k) => slider(t(key), 5, 350, 1, () => P[k], v => { p[k] = v; commit(); }, '°');
+    return [labelled(t('cam.law'), choice(['cyc', 'harm', 'par', 'lin'].map(k => [k, t('cam.' + k)]), P.law, v => { p.law = v; commit(); })), ang('cam.b1', 'b1'), ang('cam.bd', 'bd'), ang('cam.b2', 'b2')]; }
+  if (p.type === 'tfollow') return [];
   const out = [], num = (key, k, lo, hi, step, unit, def = 0) => slider(t(key), lo, hi, step, () => p[k] == null ? def : p[k], v => { p[k] = v; commit(); }, unit);
   if (SLIDES.includes(p.type)) out.push(num('link.F', 'F', 0, 1e6, 1, unitSym('N')), slider(t('link.fw'), 1, 100, 1, () => Math.round((p.fw == null ? 1 : p.fw) * 100), v => { p.fw = v / 100; commit(); }, '%'));
   if (!ty(p, 'pivot', 'guide')) out.push(num('link.m', 'm', 0, 10000, 0.01, unitSym('kg')));
@@ -71,7 +93,7 @@ function drawGraphs(cvs, p) {
   cvs.style.height = n * H + 'px'; cvs.hidden = !n; if (!n) return;
   if (cvs.width !== Math.round(Wc * dpr2) || cvs.height !== Math.round(n * H * dpr2)) { cvs.width = Math.round(Wc * dpr2); cvs.height = Math.round(n * H * dpr2); }
   const g = cvs.getContext('2d'); g.setTransform(dpr2, 0, 0, dpr2, 0, 0); g.clearRect(0, 0, Wc, n * H);
-  const at = cycIndex(S.cyc) / S.cyc.N, x0 = 4, x1 = Wc - 4;
+  const at = S.at ? S.at() : cycIndex(S.cyc) / S.cyc.N, x0 = 4, x1 = Wc - 4;
   S.series.forEach((sr, i) => {
     const top = i * H + 16, bot = (i + 1) * H - 6; let lo = Math.min(0, ...sr.data), hi = Math.max(0, ...sr.data); if (hi - lo < 1e-12) hi = lo + 1;
     const X = k => x0 + (x1 - x0) * k / sr.data.length, Y = v => bot - (bot - top) * (v - lo) / (hi - lo);

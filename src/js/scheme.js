@@ -92,6 +92,16 @@ function tmmDraw(g, s) {
   switch (g.type) {
     case 'pivot': ctx.lineWidth = w; ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(-4.5, 8); ctx.lineTo(4.5, 8); ctx.closePath(); ctx.stroke(); hatchUnder(-6.5, 6.5, 8); break;
     case 'guide': hatchUnder(-g.len / 2, g.len / 2, 0); break;
+    case 'tcam': { // the cam's working surface, with a mark at the start of the rise
+      const pts = camProfile(g, (parts.find(p => p.type === 'tfollow' && camOf(p) === g) || {}).rr || 0, 120);
+      ctx.beginPath(); pts.forEach((q, k) => k ? ctx.lineTo(q[0], q[1]) : ctx.moveTo(q[0], q[1])); ctx.closePath(); ctx.globalAlpha *= 0.1; ctx.fill(); ctx.globalAlpha /= 0.1; ctx.lineWidth = w; ctx.stroke();
+      seg(0, 0, pts[0][0], pts[0][1], thin); break;
+    }
+    case 'tfollow': { // roller, stem, and the frame's guide around the stem
+      const rr = g.rr || 0; if (rr) { ctx.beginPath(); ctx.arc(0, 0, rr, 0, TAU); ctx.fillStyle = C.paper; ctx.fill(); ctx.lineWidth = w; ctx.stroke(); ctx.fillStyle = col; }
+      seg(rr, 0, FOLLOW_L, 0); if (camOf(g)) for (const sd of [-1, 1]) { seg(FOLLOW_L * 0.5, sd * 2.6, FOLLOW_L * 0.85, sd * 2.6); for (let x = FOLLOW_L * 0.5 + 1; x < FOLLOW_L * 0.85; x += 3) seg(x, sd * 2.6, x + 2, sd * 5.2, thin); }
+      break;
+    }
     case 'tcrank': seg(0, 0, g.len, 0, 2.6 / s); if (!paired.has(0)) { ctx.lineWidth = thin; ctx.save(); ctx.rotate(-th); ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(-4.5, 8); ctx.lineTo(4.5, 8); ctx.closePath(); ctx.stroke(); hatchUnder(-6.5, 6.5, 8); ctx.restore(); } break;
     case 'trod': case 'trocker': seg(0, 0, g.len, 0); break;
     case 'tcoul': seg(0, -1.8, g.len, -1.8, thin * 1.4); seg(0, 1.8, g.len, 1.8, thin * 1.4); seg(0, -1.8, 0, 1.8, thin * 1.4); seg(g.len, -1.8, g.len, 1.8, thin * 1.4); break;
@@ -104,7 +114,7 @@ function tmmDraw(g, s) {
   }
   ctx.restore();
   js.forEach((_, k) => { // hinge circles in bench coordinates
-    const q = jointPos(g, k), on = paired.has(k) || (g.type === 'tcrank' && k === 0) || g.type === 'pivot';
+    const q = jointPos(g, k), on = paired.has(k) || (isDriver(g) && k === 0) || g.type === 'pivot';
     ctx.beginPath(); ctx.arc(q.x, q.y, on ? 2.3 : 1.3, 0, TAU); ctx.fillStyle = on ? C.paper : col; ctx.fill(); ctx.lineWidth = on ? 1.6 / s : thin; ctx.stroke();
   });
   ctx.restore();
@@ -116,6 +126,8 @@ function tmmOutline(g) {
   else if (BAR.includes(g.type)) ctx.rect(-4.5, -4.5, g.len + 9, 9);
   else if (g.type === 'tplate') ctx.arc(g.r, 0, g.r + 4.5, 0, TAU);
   else if (g.type === 'pivot') ctx.rect(-8, -4, 16, 17);
+  else if (g.type === 'tcam') ctx.arc(0, 0, g.r + g.h + 3, 0, TAU);
+  else if (g.type === 'tfollow') ctx.rect(-(g.rr || 0) - 3, -6.5, FOLLOW_L + (g.rr || 0) + 6, 13);
   else ctx.rect(-10.5, -7, 21, 14);
   ctx.stroke(); ctx.restore();
 }

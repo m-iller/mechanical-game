@@ -45,7 +45,7 @@ function linkRows(p) {
     [t('io.W'), `${g.W}`, ex('W', g.W, '', 'W = 3·n − 2·p₅ − p₄', [['n', g.n, ''], ['p₅', g.p5, ''], ['p₄', 0, '']], ['ex.cheb'])]];
 }
 function specRows(p) {
-  if (isLink(p)) return [...linkRows(p), ...(p.type === 'tcrank' ? [[t('sp.n'), rpmText(p.w)]] : []), ...tmmCycleRows(p)];
+  if (isLink(p)) return [...linkRows(p), ...(isDriver(p) ? [[t('sp.n'), rpmText(p.w)]] : []), ...tmmCycleRows(p)];
   const r = [], add = (k, v) => r.push([t(k), v]), z = p.z, d = pitchD(p), o = outOf(p);
   const mates = meshes.filter(m => m.a === p || m.b === p);
   switch (p.type) {
@@ -248,7 +248,7 @@ function renderLayers() {
 }
 function renderSel() {
   const ps = selParts(), p = ps.length === 1 ? ps[0] : null, body = $('sel-body');
-  const key = JSON.stringify([lang, layerCount, linkDraft && [linkDraft.kind, linkDraft.ids], outId, links.map(L => [L.ids, L.crossed]), ps.map(q => [q.id, q.type, q.layer, q.on, q.held, q.loose, !!q.motor, q.load && q.load.kind, q.mount && q.mount.c, q.l0, q.l1]), pairs.map(q => [q.id, q.type])]);
+  const key = JSON.stringify([lang, layerCount, linkDraft && [linkDraft.kind, linkDraft.ids], outId, links.map(L => [L.ids, L.crossed]), ps.map(q => [q.id, q.type, q.layer, q.on, q.held, q.loose, !!q.motor, q.load && q.load.kind, q.mount && q.mount.c, q.l0, q.l1, q.law]), pairs.map(q => [q.id, q.type])]);
   $('sel-name').textContent = p ? `${p.name} · ${typeName(p)}` : ps.length ? t('sel.many', { n: ps.length }) : t('sel.none');
   if (key !== selKey) {
     selKey = key; selRefresh = []; graphTick = null; body.textContent = '';
@@ -273,7 +273,7 @@ function renderSel() {
       else body.append(labelled(t('sel.layer'), layerSeg(p.layer, l => { setLayer(p, l); commit(); })));
       const tg = [];
       if (T0.tog) tg.push(btn(t(`tog.${p.type}.${p.on ? 1 : 0}`), () => { p.on = !p.on; commit(); }, p.on));
-      if (!isLin(p) && !ty(p, 'emotor', 'machine') && (!isLink(p) || p.type === 'tcrank')) tg.push(btn(t('tog.motor'), () => { if (p.motor) delete p.motor; else { p.motor = { kind: 'speed', rpm: 60, tq: 2 }; delete p.load; } commit(); }, !!p.motor));
+      if (!isLin(p) && !ty(p, 'emotor', 'machine') && (!isLink(p) || isDriver(p))) tg.push(btn(t('tog.motor'), () => { if (p.motor) delete p.motor; else { p.motor = { kind: 'speed', rpm: 60, tq: 2 }; delete p.load; } commit(); }, !!p.motor));
       if (!isLin(p) && !isShaft(p) && !isLink(p) && !ty(p, 'emotor', 'machine', 'brake') && !p.motor) tg.push(btn(t('tog.load'), () => { if (p.load) delete p.load; else p.load = { kind: 'const', tq: 1, n: 1000, eta: 1 }; commit(); }, !!p.load));
       if (!isLin(p) && !isLink(p) && p.type !== 'brake') tg.push(btn(t('tog.held'), () => { p.held = !p.held; commit(); }, !!p.held));
       if (isVert(p) && !isShaft(p) && !ty(p, 'clutch', 'diff')) tg.push(btn(t('tog.loose'), () => { p.loose = !p.loose; commit(); }, !!p.loose));
@@ -294,7 +294,7 @@ function renderSel() {
         const box = el('div', null, { className: 'links' }), mine = pairsOf(p);
         for (const q of mine) {
           const o = byId(q.a === p.id ? q.b : q.a), r = el('div'); r.append(el('span', o ? o.name : '?'));
-          if (q.type === 'P') r.append(el('span', t('pair.P')));
+          if (q.type === 'P' || q.type === 'H') r.append(el('span', t('pair.' + q.type)));
           else r.append(choice([['R', t('pair.R')], ['F', t('pair.F')]], q.type, v => { q.type = v; q.turn = v === 'F' ? wrap(linkTh(byId(q.b)) - linkTh(byId(q.a))) : 0; commit(); }));
           r.append(btn('×', () => { pairs = pairs.filter(x => x !== q); commit(); })); box.append(r);
         }
@@ -546,7 +546,7 @@ function linkDrag(w) {
   if (L.k === 1) { const q = tmmSnap(g, w.x, w.y, 1, skip, near), [lo, hi] = T(g).lim; g.len = Math.max(lo, Math.min(hi, +Math.hypot(q.x - g.x, q.y - g.y).toFixed(2))); g.dir = Math.atan2(q.y - g.y, q.x - g.x); return; }
   if (L.k === 0) { const q = tmmSnap(g, w.x, w.y, 0, skip, near), [lo, hi] = T(g).lim; g.x = q.x; g.y = q.y; g.len = Math.max(lo, Math.min(hi, +Math.hypot(L.far.x - q.x, L.far.y - q.y).toFixed(2))); g.dir = Math.atan2(L.far.y - q.y, L.far.x - q.x); return; }
   let q = { x: w.x - d.dx, y: w.y - d.dy };
-  if (g.type === 'tcrank' && !d.others.length) { const a = snap(g, q.x, q.y); if (a.x !== q.x || a.y !== q.y) q = a; else q = tmmSnap(g, q.x, q.y, null, skip, near); }   // a crank goes onto a shaft first
+  if (isDriver(g) && !d.others.length) { const a = snap(g, q.x, q.y); if (a.x !== q.x || a.y !== q.y) q = a; else q = tmmSnap(g, q.x, q.y, null, skip, near); }   // a crank goes onto a shaft first
   else q = tmmSnap(g, q.x, q.y, null, skip, near);
   g.x = q.x; g.y = q.y; for (const o of d.others) { o.q.x = g.x + o.ox; o.q.y = g.y + o.oy; }
 }

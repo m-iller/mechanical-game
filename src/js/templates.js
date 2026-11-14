@@ -73,6 +73,12 @@ const TEMPLATES = {
     const g = addPart('guide', { x, y: y + 80, layer: L + 2, len: 70, dir: Math.PI / 2 }), ram = addPart('tslider', { x, y: y + 70, layer: L + 2, dir: Math.PI / 2, F: 4000, fw: 0.25, m: 5 });
     tmmAttach([rod.id, ram.id]); out.push(c, rod, g, ram); return out;
   } },
+  // cam drive of a valve: a cam on its own motor lifts a roller follower by the cycloidal law
+  valve: { layers: 1, build(x, y, L) {
+    const c = addPart('tcam', { x, y, layer: L, r: 18, h: 8, law: 'cyc', b1: 70, bd: 20, b2: 70, dir: 0, motor: { rpm: 600, tq: 2 } });
+    const f = addPart('tfollow', { x, y: y - 23, layer: L, rr: 5, dir: -Math.PI / 2 });
+    tmmAttach([f.id]); return [c, f];
+  } },
   // four-bar: crank 20, coupler 70, rocker 50, frame 80 — a crank-rocker by Grashof's rule
   fourbar: { layers: 1, build(x, y, L) {
     const a = 20, b = 70, c = 50, d = 80, B = { x, y: y - a }, dx = x + d - B.x, dy = y - B.y, f = Math.hypot(dx, dy), k = (b * b - c * c + f * f) / (2 * f), h = Math.sqrt(b * b - k * k);

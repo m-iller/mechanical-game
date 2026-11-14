@@ -20,6 +20,7 @@ Gear Bench is growing from a drive sandbox into a rough-figures tool for mechani
 - **Analysis over one turn of the crank**: graphs of travel, speed and acceleration (or angle, angular speed and acceleration) for the picked link with a marker at the current position, joint paths on the bench, stroke and peak values, Grashof's rule for a four-bar.
 - **Forces**: a resisting force on a slider over part of its stroke, link masses, the moment the crank needs over the turn (kinetostatics), and its mean as a load on the drive.
 - **Flywheel**: excess work, speed fluctuation δ for the flywheels on the crank shaft, and the inertia needed for δ = 1/20. Template "Crank press with flywheel".
+- **Cams**: a cam and a roller follower as links with a higher pair. Motion laws (cycloidal, harmonic, constant acceleration, constant speed), surface profile, pressure angle, base radius for α ≤ 30°, curvature check, follower graphs. Template "Cam drive of a valve".
 
 ### Changed
 - Scenes are saved in format v3. Scenes from 2.x open and are migrated on load.

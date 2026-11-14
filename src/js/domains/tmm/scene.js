@@ -5,13 +5,17 @@
    Every other link is found each frame from the pair equations (linkage.js), starting from where it stood. */
 'use strict';
 
+const FOLLOW_L = 34;
 const BAR = ['tcrank', 'trod', 'trocker', 'tcoul'], SLIDES = ['tslider', 'tstone'], RAILS = ['guide', 'tcoul'];
-const linkFixed = p => ty(p, 'pivot', 'guide', 'tcrank');
-const linkTh = p => p.type === 'tcrank' ? p.dir + (p.w || 0) * (clock + jit) : p.dir || 0;
+// links whose pose is given rather than solved: the frame, the driven links, and a follower riding a cam
+const camOf = p => { const q = pairs.find(x => x.type === 'H' && x.b === p.id); return q ? byId(q.a) : null; };
+const linkFixed = p => ty(p, 'pivot', 'guide', 'tcrank', 'tcam') || (p.type === 'tfollow' && !!camOf(p));
+const linkTh = p => isDriver(p) ? p.dir + (p.w || 0) * (clock + jit) : p.dir || 0;
 // joints in the link's own frame
 function jointsOf(p) {
   if (BAR.includes(p.type)) return [[0, 0], [p.len, 0]];
   if (p.type === 'tplate') return [...Array(p.n)].map((_, k) => [p.r * (1 - Math.cos(TAU * k / p.n)), -p.r * Math.sin(TAU * k / p.n)]);   // on a circle of radius r through the first joint
+  if (p.type === 'tfollow') return [[0, 0], [FOLLOW_L, 0]];   // roller centre and the far end of the stem
   return p.type === 'guide' ? [] : [[0, 0]];
 }
 const toWorldOf = (p, q) => { const th = linkTh(p), c = Math.cos(th), s = Math.sin(th); return { x: p.x + c * q[0] - s * q[1], y: p.y + s * q[0] + c * q[1] }; };
@@ -34,6 +38,7 @@ function tmmMech() {
   }
   for (const q of pairs) {
     const a = byId(q.a), b = byId(q.b); if (!a || !b || (linkFixed(a) && linkFixed(b))) continue;
+    if (q.type === 'H') continue;   // a cam places its follower directly, see tmmFollow()
     if (q.type === 'P') mech.pairs.push({ type: 'P', a: a.id, b: b.id, pa: [0, 0], pb: jointsOf(b)[q.jb] || [0, 0], ua: [1, 0], turn: q.turn });
     else mech.pairs.push({ type: q.type, a: a.id, b: b.id, pa: jointsOf(a)[q.ja] || [0, 0], pb: jointsOf(b)[q.jb] || [0, 0], turn: q.turn });
   }
@@ -41,7 +46,12 @@ function tmmMech() {
 }
 /* Put every free link where its pairs say. False when the links cannot reach: a dead point passed the wrong way,
    a crank too long for its chain, a rod pulled off its slider's stroke. The links then stay where they were. */
+// a follower sits on its cam: on the ray from the cam's centre along the follower's own direction, at the pitch radius for the cam's angle
+function tmmFollow() {
+  for (const q of pairs) if (q.type === 'H') { const c = byId(q.a), f = byId(q.b); if (!c || !f) continue; const R = c.r + (f.rr || 0) + camS(c, linkTh(c) - f.dir)[0]; f.x = c.x + R * Math.cos(f.dir); f.y = c.y + R * Math.sin(f.dir); }
+}
 function tmmStep() {
+  tmmFollow();
   const mech = tmmMech(); if (!mech.moving.length || !mech.pairs.length) return true;
   const r = solveNL(linkage(mech).eqs, mech.q0, { tol: 1e-9, max: 40 });
   if (r.res > 1e-4) return false;
@@ -54,20 +64,32 @@ function tmmAnalyze() {
   const L = parts.filter(p => isLink(p) && !ty(p, 'pivot', 'guide')), par = new Map(L.map(p => [p.id, p.id])), find = i => { while (par.get(i) !== i) i = par.get(i); return i; };
   for (const q of pairs) if (par.has(q.a) && par.has(q.b)) par.set(find(q.a), find(q.b));
   const groups = new Map(), of = new Map();
-  for (const p of L) { const r = find(p.id); if (!groups.has(r)) groups.set(r, { ids: [], n: 0, p5: 0, pf: 0, drivers: 0 }); const g = groups.get(r); g.ids.push(p.id); g.n++; of.set(p.id, g); if (p.type === 'tcrank') { g.p5++; g.drivers++; } }
-  for (const q of pairs) { const g = of.get(q.a) || of.get(q.b); if (!g) continue; if (q.type === 'F') g.pf++; else g.p5++; }
+  for (const p of L) { const r = find(p.id); if (!groups.has(r)) groups.set(r, { ids: [], n: 0, p5: 0, p4: 0, pf: 0, drivers: 0 }); const g = groups.get(r); g.ids.push(p.id); g.n++; of.set(p.id, g); if (isDriver(p)) { g.p5++; g.drivers++; } }
+  for (const q of pairs) { const g = of.get(q.a) || of.get(q.b); if (!g) continue; if (q.type === 'F') g.pf++; else if (q.type === 'H') { g.p4++; g.p5++; } else g.p5++; }   // a follower brings its own guide on the frame
   const out = [...groups.values()].filter(g => g.p5 + g.pf > 0);
-  for (const g of out) { g.n -= g.pf; g.W = 3 * g.n - 2 * g.p5; }
+  for (const g of out) { g.n -= g.pf; g.W = 3 * g.n - 2 * g.p5 - g.p4; }
   tmmInfo = { ok: tmmStepOk(), groups: out, of };
 }
 // do the links, as they stand, satisfy their pairs?
 function tmmStepOk() { const mech = tmmMech(); if (!mech.pairs.length) return true; return Math.max(...linkage(mech).eqs(mech.q0).map(Math.abs), 0) < 1e-3; }
 
+addCheck('cam', () => {
+  const out = [];
+  for (const c of parts) if (c.type === 'tcam') {
+    const f = parts.find(p => p.type === 'tfollow' && camOf(p) === c), rr = f ? f.rr || 0 : 0, k = camCheck(c, rr);
+    if (!camPlan(c).fits) out.push({ level: 'error', code: 'w.camPlan', text: t('w.camPlan', { a: c.name }), ids: [c.id] });
+    if (k.alpha > Math.PI / 6 + 1e-9) out.push({ level: 'warn', code: 'w.camAngle', text: t('w.camAngle', { a: c.name, d: fmtNum(k.alpha * 180 / Math.PI, 3), r: fmtNum(k.rmin, 3) }), ids: [c.id] });
+    if (rr && k.rho <= rr) out.push({ level: 'warn', code: 'w.camCurv', text: t('w.camCurv', { a: c.name, d: fmtNum(k.rho, 3) }), ids: [c.id] });
+    if ((c.law || 'cyc') === 'lin') out.push({ level: 'info', code: 'w.camShock', text: t('w.camShock', { a: c.name }), ids: [c.id] });
+  }
+  return out;
+});
 addCheck('linkage', () => {
   const out = [];
   if (!tmmInfo.ok) out.push({ level: 'error', code: 'w.linkOpen', text: t('w.linkOpen'), ids: [] });
   for (const g of tmmInfo.groups) {
     const free = g.W - g.drivers, a = nameOf(g.ids);
+    if (g.p4 && free === 0) continue;
     if (free > 0) out.push({ level: 'warn', code: 'w.linkFree', text: t('w.linkFree', { a, W: g.W, d: g.drivers }), ids: g.ids });
     else if (free < 0) out.push({ level: 'warn', code: 'w.linkOver', text: t('w.linkOver', { a, W: g.W, d: g.drivers }), ids: g.ids });
   }
@@ -104,6 +126,10 @@ function tmmAttach(ids) {
       const hits = allJoints(new Set([p.id])).filter(j => Math.hypot(j.x - at.x, j.y - at.y) < NEAR_MM && !mates.has(j.p.id + ':' + j.k) && !(linkFixed(p) && linkFixed(j.p)));
       if (hits.length) { const j = hits.find(h => linkFixed(h.p)) || hits[0]; made.push(addPair('R', j.p, j.k, p, k)); }
     });
+    if (p.type === 'tfollow' && !camOf(p)) { // a follower dropped beside a cam rides it, pointing away from the cam's centre
+      const c = parts.find(o => o.type === 'tcam' && Math.hypot(o.x - p.x, o.y - p.y) < o.r + o.h + (p.rr || 0) + 14);
+      if (c) { p.dir = Math.atan2(p.y - c.y, p.x - c.x); made.push(addPair('H', c, 0, p, 0)); }
+    }
     const rails = SLIDES.includes(p.type) ? parts.filter(r => RAILS.includes(r.type) && r.id !== p.id).map(r => [r, p]) : RAILS.includes(p.type) ? parts.filter(s => SLIDES.includes(s.type)).map(s => [p, s]) : [];
     for (const [r, s] of rails) {
       if (pairs.some(q => q.type === 'P' && q.b === s.id)) continue;
@@ -138,6 +164,8 @@ function tmmHit(g, w, r = 3.2) {
   if (BAR.includes(g.type)) return Math.abs(f.pe) < r && f.al > 0 && f.al < g.len ? 'body' : null;
   if (SLIDES.includes(g.type)) return Math.abs(f.al) < 8 && Math.abs(f.pe) < 5 ? 'body' : null;
   if (g.type === 'pivot') return f.pe > -2 && f.pe < 10 && Math.abs(f.al) < 6 ? 'body' : null;
+  if (g.type === 'tcam') return Math.hypot(w.x - g.x, w.y - g.y) < g.r + g.h ? 'body' : null;
+  if (g.type === 'tfollow') return Math.abs(f.pe) < r && f.al > -(g.rr || 0) - 2 && f.al < FOLLOW_L ? 'body' : null;
   if (g.type === 'tplate') { const c = toWorldOf(g, [g.r, 0]); return Math.hypot(w.x - c.x, w.y - c.y) < g.r ? 'body' : null; }
   return null;
 }

@@ -6,6 +6,8 @@ let ctx = mainCtx;                     // the drawing functions below paint into
 const ghost = document.createElement('canvas'), ghostCtx = ghost.getContext('2d');
 const FADE = 0.3;                       // opacity of the layers that are not active
 let W = 300, H = 300, C = {}, boxSel = null;
+// what the top view is being drawn for: null — the screen; 'icon' — a bare picture of the parts; 'export' — a picture for a file (grid and names, nothing that belongs to the pointer)
+let drawFor = null;
 
 function readTokens() {
   const cs = getComputedStyle(document.documentElement);
@@ -104,8 +106,8 @@ function drawTop(dpr, s, bh) {
   ctx.setTransform(dpr * s, 0, 0, dpr * s, dpr * (W / 2 - view.cx * s), dpr * (mid - view.cy * s));
   const a = toWorld(0, bh), b = toWorld(W, H);
   const rows = (step, col) => { ctx.strokeStyle = col; ctx.lineWidth = 1 / s; ctx.beginPath(); for (let y = Math.ceil(a.y / step) * step; y <= b.y; y += step) { ctx.moveTo(a.x, y); ctx.lineTo(b.x, y); } ctx.stroke(); };
-  if (s * 10 >= 7) { gridX(s, a.x, b.x, a.y, b.y, 10, C.grid); rows(10, C.grid); }
-  gridX(s, a.x, b.x, a.y, b.y, 50, C['grid-major']); rows(50, C['grid-major']);
+  if (drawFor !== 'icon') { if (s * 10 >= 7) { gridX(s, a.x, b.x, a.y, b.y, 10, C.grid); rows(10, C.grid); }
+    gridX(s, a.x, b.x, a.y, b.y, 50, C['grid-major']); rows(50, C['grid-major']); }
   const shadow = on => { if (on) { ctx.shadowColor = 'rgba(0,0,0,.35)'; ctx.shadowBlur = 10 * dpr; ctx.shadowOffsetY = 3 * dpr; } else ctx.shadowColor = 'transparent'; };
   const gearAt = (x, y, ang, path, fill, ink, lw, sh) => { ctx.save(); ctx.translate(x, y); ctx.rotate(ang); shadow(sh); ctx.fillStyle = fill; ctx.fill(path, 'evenodd'); shadow(false); ctx.strokeStyle = ink; ctx.lineWidth = lw; ctx.lineJoin = 'round'; ctx.stroke(path); ctx.restore(); };
   const detail = (x, y, ang, path, ink) => { ctx.save(); ctx.translate(x, y); ctx.rotate(ang); ctx.strokeStyle = ink; ctx.lineWidth = 0.8 / s; ctx.globalAlpha = 0.6; ctx.stroke(path); ctx.restore(); };
@@ -122,7 +124,7 @@ function drawTop(dpr, s, bh) {
     const box = (x, y, w, h, f) => { ctx.fillStyle = f; ctx.fillRect(x, y, w, h); ctx.strokeStyle = ink; ctx.lineWidth = lw; ctx.strokeRect(x, y, w, h); };
     switch (g.type) {
       case 'rack': {
-        const L = rackLen(g), o = mod(an, PM), yr = -1.25 * M, yb = yr - RB, p = new Path2D();
+        const L = rackLen(g), o = mod(an, PM), yr = -1.25 * M, yb = yr - RB, p = new RecPath();
         p.moveTo(-L / 2 - PM, yb); p.lineTo(-L / 2 - PM, yr);
         for (let c = o - PM * Math.ceil((L / 2 + PM) / PM); c < L / 2 + PM; c += PM) { p.lineTo(c - 2.48, yr); p.lineTo(c - 0.84, M); p.lineTo(c + 0.84, M); p.lineTo(c + 2.48, yr); }
         p.lineTo(L / 2 + PM, yr); p.lineTo(L / 2 + PM, yb); p.closePath();
@@ -264,13 +266,16 @@ function drawTop(dpr, s, bh) {
   // layers other than the active one are painted on a second canvas and laid over as one faded sheet
   const faded = ls => {
     ls = ls.filter(layerShown); if (!ls.length) return;
-    if (ghost.width !== cv.width || ghost.height !== cv.height) { ghost.width = cv.width; ghost.height = cv.height; }
-    const tf = mainCtx.getTransform(); ghostCtx.setTransform(1, 0, 0, 1, 0, 0); ghostCtx.clearRect(0, 0, ghost.width, ghost.height); ghostCtx.setTransform(tf);
-    ctx = ghostCtx; try { ls.forEach(layerParts); } finally { ctx = mainCtx; }
+    if (ctx.group) { ctx.group(FADE); ls.forEach(layerParts); ctx.groupEnd(); return; }   // a vector target fades the layers as a group
+    const base = ctx, bc = base.canvas;
+    if (ghost.width !== bc.width || ghost.height !== bc.height) { ghost.width = bc.width; ghost.height = bc.height; }
+    const tf = base.getTransform(); ghostCtx.setTransform(1, 0, 0, 1, 0, 0); ghostCtx.clearRect(0, 0, ghost.width, ghost.height); ghostCtx.setTransform(tf);
+    ctx = ghostCtx; try { ls.forEach(layerParts); } finally { ctx = base; }
     ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.globalAlpha = FADE; ctx.drawImage(ghost, 0, 0); ctx.restore();
   };
   const all = [...Array(layerCount).keys()];
-  faded(all.filter(l => l < activeLayer)); if (layerShown(activeLayer)) layerParts(activeLayer); faded(all.filter(l => l > activeLayer));
+  if (drawFor === 'icon') all.forEach(layerParts);   // a preview shows every layer at full strength
+  else { faded(all.filter(l => l < activeLayer)); if (layerShown(activeLayer)) layerParts(activeLayer); faded(all.filter(l => l > activeLayer)); }
   // shafts and carrier pins poke through everything above them
   for (const g of parts) {
     if (!shown(g)) continue;
@@ -292,7 +297,7 @@ function drawTop(dpr, s, bh) {
     for (const m of meshes) if (shown(m.a) && shown(m.b) && isVert(m.a)) { ctx.beginPath(); ctx.moveTo(m.a.x, m.a.y); ctx.lineTo(m.b.x, m.b.y); ctx.stroke(); dot(m.a.x, m.a.y, 1.2, C.select); dot(m.b.x, m.b.y, 1.2, C.select); }
     ctx.restore();
   }
-  for (const g of selParts()) {
+  for (const g of drawFor ? [] : selParts()) {
     ctx.strokeStyle = C.select; ctx.lineWidth = 2 / s;
     const b = boxOf(g);
     if (isLink(g)) { tmmOutline(g); tmmDrawPath(g, s); continue; }
@@ -301,12 +306,12 @@ function drawTop(dpr, s, bh) {
   }
   /* labels and dimensions, in screen space */
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  if (drawFor === 'icon') { ctx.restore(); return; }
   ctx.font = `500 12px ${C.mono}`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.lineJoin = 'round';
   const text = (str, x, y, col) => { ctx.strokeStyle = C.paper; ctx.lineWidth = 4; ctx.strokeText(str, x, y); ctx.fillStyle = col; ctx.fillText(str, x, y); };
   const X = x => (x - view.cx) * s + W / 2, Y = y => (y - view.cy) * s + mid, out = outPart();
   // the marker that opens a part's info window: a ring, filled while its window is open
-  markers = [];
-  const mark = (key, x, y, col) => { const open = infoWins.has(key); ctx.beginPath(); ctx.arc(x, y, 5.5, 0, TAU); ctx.fillStyle = open ? C.select : C.paper; ctx.fill(); ctx.strokeStyle = open ? C.select : col; ctx.lineWidth = 1.4; ctx.stroke(); ctx.beginPath(); ctx.arc(x, y, 1.6, 0, TAU); ctx.fillStyle = open ? C.paper : col; ctx.fill(); if (y > bh + 4) markers.push({ key, x, y }); };
+  const mark = (key, x, y, col) => { if (drawFor) return; const open = infoWins.has(key); ctx.beginPath(); ctx.arc(x, y, 5.5, 0, TAU); ctx.fillStyle = open ? C.select : C.paper; ctx.fill(); ctx.strokeStyle = open ? C.select : col; ctx.lineWidth = 1.4; ctx.stroke(); ctx.beginPath(); ctx.arc(x, y, 1.6, 0, TAU); ctx.fillStyle = open ? C.paper : col; ctx.fill(); if (y > bh + 4) markers.push({ key, x, y }); };
   for (const g of [...parts].sort((p, q) => p.layer - q.layer)) {
     if (!shown(g) || (isShaft(g) && !sel.has(g.id) && !g.motor) || g.mount) continue;
     const b = boxOf(g), off = (b ? b[1] : tipR(g)) * s + 13, n = b ? [-Math.sin(g.dir), Math.cos(g.dir)] : [0, 1];
@@ -323,14 +328,15 @@ function drawTop(dpr, s, bh) {
     while (i < seg.length - 1 && run + seg[i] < half) run += seg[i++];
     const k = seg[i] ? (half - run) / seg[i] : 0; ctx.globalAlpha = a.layer === activeLayer ? 1 : 0.45;
     const ux = seg[i] ? (P[i + 1].x - P[i].x) / seg[i] : 1, uy = seg[i] ? (P[i + 1].y - P[i].y) / seg[i] : 0, px = X(P[i].x + (P[i + 1].x - P[i].x) * k), py = Y(P[i].y + (P[i + 1].y - P[i].y) * k), col = selPipe === q.id ? C.select : C.ink;
+    if (drawFor) continue;
     ctx.strokeStyle = col; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(px, py); ctx.lineTo(px + uy * 12, py - ux * 12); ctx.stroke();   // beside the pipe, on a short stalk, so the pipe itself stays free to grab
     mark('q' + q.id, px + uy * 12, py - ux * 12, col);
   }
   ctx.globalAlpha = 1;
-  for (const m of markers) { const w = infoWins.get(m.key); if (!w) continue; const e = infoAnchor(w, m); if (Math.hypot(e.x - m.x, e.y - m.y) < 8) continue; ctx.strokeStyle = C.select; ctx.lineWidth = 1; ctx.setLineDash([4, 3]); ctx.beginPath(); ctx.moveTo(m.x, m.y); ctx.lineTo(e.x, e.y); ctx.stroke(); ctx.setLineDash([]); }
+  for (const m of drawFor ? [] : markers) { const w = infoWins.get(m.key); if (!w) continue; const e = infoAnchor(w, m); if (Math.hypot(e.x - m.x, e.y - m.y) < 8) continue; ctx.strokeStyle = C.select; ctx.lineWidth = 1; ctx.setLineDash([4, 3]); ctx.beginPath(); ctx.moveTo(m.x, m.y); ctx.lineTo(e.x, e.y); ctx.stroke(); ctx.setLineDash([]); }
   if (showDims) for (const m of meshes) if (shown(m.a) && shown(m.b) && isVert(m.a)) text(`a ${dist(m.a, m.b).toFixed(dist(m.a, m.b) % 1 ? 1 : 0)}`, X((m.a.x + m.b.x) / 2), Y((m.a.y + m.b.y) / 2), C.select);
   hydLegend(W - 136, bh + 30);
-  if (boxSel) { ctx.strokeStyle = C.select; ctx.lineWidth = 1; ctx.setLineDash([5, 3]); ctx.strokeRect(boxSel.x0, boxSel.y0, boxSel.x1 - boxSel.x0, boxSel.y1 - boxSel.y0); ctx.setLineDash([]); ctx.globalAlpha = 0.08; ctx.fillStyle = C.select; ctx.fillRect(boxSel.x0, boxSel.y0, boxSel.x1 - boxSel.x0, boxSel.y1 - boxSel.y0); ctx.globalAlpha = 1; }
+  if (boxSel && !drawFor) { ctx.strokeStyle = C.select; ctx.lineWidth = 1; ctx.setLineDash([5, 3]); ctx.strokeRect(boxSel.x0, boxSel.y0, boxSel.x1 - boxSel.x0, boxSel.y1 - boxSel.y0); ctx.setLineDash([]); ctx.globalAlpha = 0.08; ctx.fillStyle = C.select; ctx.fillRect(boxSel.x0, boxSel.y0, boxSel.x1 - boxSel.x0, boxSel.y1 - boxSel.y0); ctx.globalAlpha = 1; }
   ctx.restore();
 }
 
@@ -477,12 +483,19 @@ function drawSide(dpr, s, bh) {
   ctx.globalAlpha = 1; pipesSide(s);
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   ctx.font = `500 12px ${C.mono}`; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+  for (const g of parts) { // the same rings as in the top view, above each part
+    if (!shown(g) || g.mount || (isShaft(g) && !g.motor)) continue;
+    const x = W / 2 + (g.x - view.cx) * s, y = by - ((isShaft(g) ? g.l1 : g.layer) * LP + FW) * s - 9, key = 'p' + g.id, open = infoWins.has(key), col = collide.has(g.id) ? C.jam : g.motor ? C.brass : C.ink; if (y < 8 || x < 50) continue;
+    ctx.globalAlpha = onActive(g) ? 1 : 0.45; ctx.beginPath(); ctx.arc(x, y, 4.5, 0, TAU); ctx.fillStyle = open ? C.select : C.paper; ctx.fill(); ctx.strokeStyle = open ? C.select : col; ctx.lineWidth = 1.3; ctx.stroke();
+    ctx.beginPath(); ctx.arc(x, y, 1.3, 0, TAU); ctx.fillStyle = open ? C.paper : col; ctx.fill(); if (!markers.some(m => Math.hypot(m.x - x, m.y - y) < 9)) markers.push({ key, x, y });
+  }
+  ctx.globalAlpha = 1;
   for (let l = 0; l < layerCount; l++) { const y = by - (l * LP + FW / 2) * s; ctx.strokeStyle = C.paper; ctx.lineWidth = 4; const lb = layerLabel(l) + (lockedLayers.has(l) ? ' ⊘' : ''); ctx.strokeText(lb, 10, y); ctx.fillStyle = l === activeLayer ? C.select : C.muted; ctx.fillText(lb, 10, y); }
   ctx.restore();
 }
 
 function draw(ts) {
-  if (bandH() === H) markers = [];
+  markers = [];
   const dpr = cv.width / W, s = view.scale, bh = bandH();
   jit = lockMsg && running ? 0.0005 * Math.sin(ts * 0.035) : 0; // a jammed train shivers instead of turning
   if (jit) place();
@@ -490,6 +503,8 @@ function draw(ts) {
   ctx.fillStyle = C.paper; ctx.fillRect(0, 0, W, H);
   if (bh > 0) drawSide(dpr, s, bh);
   if (bh < H) drawTop(dpr, s, bh);
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  drawOverlay(bh);
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   if (bh > 0 && bh < H) { ctx.strokeStyle = C.ink; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.moveTo(0, bh); ctx.lineTo(W, bh); ctx.stroke(); }
   ctx.font = `500 11px ${C.mono}`; ctx.textAlign = 'right'; ctx.textBaseline = 'middle'; ctx.fillStyle = C.muted;

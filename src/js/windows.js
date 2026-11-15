@@ -36,7 +36,7 @@ function setPanelW(w) {
 })();
 
 /* ---------- windows that float over the sheet: dragged by the heading, resized by the corner ---------- */
-function floatWin(node, handle) {
+function floatWin(node, handle, onMove) {
   let d = null;
   handle.style.touchAction = 'none';
   handle.addEventListener('pointerdown', e => {
@@ -47,7 +47,7 @@ function floatWin(node, handle) {
   handle.addEventListener('pointermove', e => {
     if (!d) return;
     const x = Math.max(0, Math.min(d.s.width - 40, e.clientX - d.s.left - d.dx)), y = Math.max(0, Math.min(d.s.height - 24, e.clientY - d.s.top - d.dy));
-    node.style.left = x + 'px'; node.style.top = y + 'px'; node.style.bottom = 'auto'; node.style.right = 'auto';
+    node.style.left = x + 'px'; node.style.top = y + 'px'; node.style.bottom = 'auto'; node.style.right = 'auto'; if (onMove) onMove();
   });
   const end = () => { d = null; }; handle.addEventListener('pointerup', end); handle.addEventListener('pointercancel', end);
   node.addEventListener('pointerdown', () => floatTop(node));
@@ -75,13 +75,14 @@ function infoTitle(key) {
 }
 function infoOpen(key, at) {
   if (infoWins.has(key)) { floatTop(infoWins.get(key).node); return infoWins.get(key); }
-  const sh = byIdEl('sheet'), node = el('div', null, { className: 'info' }), head = el('h3'), title = el('span'), x = el('button', '×'), dl = el('dl');
+  const sh = byIdEl('sheet'), node = el('div', null, { className: 'info' }), head = el('h3'), title = el('span'), pin = el('button', '⌖'), x = el('button', '×'), dl = el('dl');
   x.setAttribute('aria-label', t('btn.cancel')); x.onclick = () => infoClose(key);
-  head.append(title, x); node.append(head, dl); dl.dataset.why = 'info' + key + ':'; sh.append(node);
-  const w = { key, node, dl, title }; infoWins.set(key, w); infoFill(w);
+  head.append(title, pin, x); node.append(head, dl); dl.dataset.why = 'info' + key + ':'; sh.append(node);
+  const w = { key, node, dl, title, pin: null, pinBtn: pin }; infoWins.set(key, w); infoFill(w);
+  pin.title = t('info.pin'); pin.setAttribute('aria-label', t('info.pin')); press(pin, false); pin.onclick = () => infoPin(w);   // keep the window at this distance from its part
   const px = at ? at.x + 14 : 20 + 16 * infoWins.size, py = at ? at.y + 14 : 50 + 16 * infoWins.size;
   node.style.left = Math.max(4, Math.min(sh.clientWidth - node.offsetWidth - 4, px)) + 'px'; node.style.top = Math.max(4, Math.min(sh.clientHeight - node.offsetHeight - 4, py)) + 'px';
-  floatWin(node, head); floatTop(node);
+  floatWin(node, head, () => { if (w.pin) { const m = markers.find(k => k.key === key); if (m) w.pin = { dx: node.offsetLeft - m.x, dy: node.offsetTop - m.y }; } }); floatTop(node);
   return w;
 }
 function infoClose(key) { const w = infoWins.get(key); if (w) { w.node.remove(); infoWins.delete(key); } }

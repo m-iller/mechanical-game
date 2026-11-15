@@ -109,6 +109,8 @@ const pickKeys = (o, keys) => { const r = {}; for (const k of keys) if (o[k] != 
 /* ---------- scene state ---------- */
 let parts = [], links = [], nextId = 1;
 let pipes = [], pipeDraft = null, selPipe = null;   // pipes: { id, a, pa, b, pb, pts: [[x, y]…], d, kind, fluid, mat } between ports of parts
+let sceneName = '';                           // the scene's name: the file it is saved as and the title of its report
+let sceneExtra = null;                        // lets the interface add its own fields to a saved scene (open info windows)
 let sceneGen = 0;                             // goes up whenever a whole scene is replaced, so the panel knows its cards are stale
 let pairs = [];                              // kinematic pairs between links: { id, type: 'R' | 'P' | 'F', a, ja, b, jb, turn }
 let layerCount = 3, activeLayer = 0, hiddenLayers = new Set();
@@ -290,13 +292,13 @@ const shown = p => isShaft(p) ? [...Array(p.l1 - p.l0 + 1)].some((_, i) => layer
 
 // an empty bench with n layers
 function resetScene(n = 3) {
-  sceneGen++; parts = []; links = []; pairs = []; pipes = []; pipeDraft = null; selPipe = null; nextId = 1; sel = new Set(); linkDraft = null; outId = null; clock = 0;
+  sceneGen++; sceneName = ''; parts = []; links = []; pairs = []; pipes = []; pipeDraft = null; selPipe = null; nextId = 1; sel = new Set(); linkDraft = null; outId = null; clock = 0;
   layerCount = n; activeLayer = 0; hiddenLayers = new Set(); lockedLayers = new Set(); layerNames = []; soloActive = false;
 }
 
 /* ---------- save and load ---------- */
 function serialize() {
-  return { v: SCENE_V, nextId, outId, showDims, solo: soloActive, scheme: schemeMode,
+  return { v: SCENE_V, ...(sceneName ? { name: sceneName } : {}), ...(sceneExtra ? sceneExtra() : {}), nextId, outId, showDims, solo: soloActive, scheme: schemeMode,
     layers: [...Array(layerCount)].map((_, l) => ({ name: layerNames[l] || '', visible: !hiddenLayers.has(l), locked: lockedLayers.has(l) })),
     links: links.map(L => ({ id: L.id, kind: L.kind, ids: L.ids, crossed: L.crossed, free: linkPos(L) })),
     pairs: pairs.map(q => ({ ...q })),
@@ -315,7 +317,7 @@ function serialize() {
 }
 function load(d) {
   d = migrate(d); if (!d) throw new Error('unreadable scene');
-  sceneGen++;
+  sceneGen++; sceneName = typeof d.name === 'string' ? d.name : '';
   const ls = d.layers || [];
   parts = d.parts.filter(o => TYPES[o.type]).map(make);
   links = (d.links || []).map(L => ({ id: L.id, kind: L.kind, ids: L.ids.slice(), crossed: !!L.crossed, free: L.free || 0, phase: L.free || 0, w: 0 }));
@@ -329,4 +331,6 @@ function load(d) {
 }
 const STORE = 'gear-bench-5';
 let saveHook = null;   // the panel keeps its undo history through this
-function save() { const s = JSON.stringify(serialize()); try { localStorage.setItem(STORE, s); } catch (e) {} if (saveHook) saveHook(s); }
+// the scene alone, without what the interface adds to it: this is what an undo step holds
+function coreJson() { const x = sceneExtra; sceneExtra = null; try { return JSON.stringify(serialize()); } finally { sceneExtra = x; } }
+function save() { try { localStorage.setItem(STORE, JSON.stringify(serialize())); } catch (e) {} if (saveHook) saveHook(coreJson()); }

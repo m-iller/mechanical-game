@@ -70,6 +70,11 @@ The branch `engineering-tool` turns the sandbox into a tool for quick estimates,
 - **Layers**: add, delete, reorder, hide, lock, name. Only the active layer takes the pointer; the others are faded and let clicks through.
 - **Side view**: drag a part along x and up or down between layers, pull a shaft by its ends, click a layer's letter to make it active.
 - Space pauses. R rotates the selection. Delete removes it. Ctrl+D duplicates. Scroll or pinch to zoom.
+- **Files**: File → Save as… writes the scene to a `.gearbench` file (Ctrl+S), Open… reads one (Ctrl+O), and a file dropped on the window opens too. The same menu saves the scheme as PNG or SVG and writes a **calculation report** (HTML for printing, or Markdown): every figure of the scene with its formula, the numbers put into it and the assumptions.
+- **Palette**: parts are picked from pictures grouped by kind, with a search box; drag a tile onto the sheet or click it. **Examples** opens a gallery of ready scenes with previews.
+- **Graph…** on a selected part runs one of its numbers through a range and plots any figure of the scene against it (CSV export).
+- **Ruler** (M): click two points for the distance, its parts along the axes and the angle. A dragged part catches level with its neighbours (Alt switches that off); several selected parts can be put in a row, in a column or spread evenly.
+- The right mouse button opens a menu on a part, a pipe or the empty sheet; `?` shows all keys; the header has a light / dark switch.
 - **Ctrl+Z** undoes, **Ctrl+Shift+Z** or **Ctrl+Y** redoes (200 steps). **Ctrl+C / Ctrl+X / Ctrl+V** copy, cut and paste the selection with its belts, pairs and pipes; the copy lands under the pointer.
 - **Figures** are not written on the sheet: every part and pipe has a small ring next to it. Click the ring for a window with its speed, torque, power, pressure, flow, temperature. Windows can be moved by the heading, resized by the corner, and several can stay open. The "Labels" button brings the old line of figures back.
 - **Window**: drag the border between the sheet and the panel, and the border between the side view and the top view (double-click puts it back). A panel section folds under its heading.

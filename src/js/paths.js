@@ -1,6 +1,17 @@
 /* Gear Bench — outlines: every part's shape as a cached Path2D, plus belt and chain routing. */
 'use strict';
 
+// A Path2D that also remembers how it was built, so the same outline can be written out as SVG (render.js).
+class RecPath extends Path2D {
+  constructor() { super(); this.cmd = []; }
+  moveTo(x, y) { this.cmd.push(['M', x, y]); super.moveTo(x, y); }
+  lineTo(x, y) { this.cmd.push(['L', x, y]); super.lineTo(x, y); }
+  arc(x, y, r, a0, a1, ccw) { this.cmd.push(['A', x, y, r, a0, a1, !!ccw]); super.arc(x, y, r, a0, a1, !!ccw); }
+  rect(x, y, w, h) { this.cmd.push(['M', x, y], ['L', x + w, y], ['L', x + w, y + h], ['L', x, y + h], ['Z']); super.rect(x, y, w, h); }
+  closePath() { this.cmd.push(['Z']); super.closePath(); }
+}
+
+
 const pathCache = new Map();
 const cached = (key, build) => { if (!pathCache.has(key)) pathCache.set(key, build()); return pathCache.get(key); };
 
@@ -39,16 +50,16 @@ function holes(p, hub, rim, n) {
 const polar = (p, pts) => { pts.forEach(([q, t], i) => { const x = q * Math.cos(t), y = q * Math.sin(t); if (i) p.lineTo(x, y); else p.moveTo(x, y); }); p.closePath(); };
 
 const spurPath = z => cached('s' + z, () => {
-  const p = new Path2D(), r = M * z / 2, bore = boreR(r);
+  const p = new RecPath(), r = M * z / 2, bore = boreR(r);
   outline(p, z, M, 1.25 * M); borePath(p, bore); holes(p, bore * 2.1, r - 3.45 * M, z >= 50 ? 6 : 5);
   return p;
 });
 // ring gear: teeth on the inside (z) and on the outside (z + 2 * RING_T)
-const ringPath = z => cached('r' + z, () => { const p = new Path2D(); outline(p, z + 2 * RING_T, M, 1.25 * M); outline(p, z, 1.25 * M, M); return p; });
-const diffPath = z => cached('d' + z, () => { const p = new Path2D(); outline(p, z, M, 1.25 * M); circle(p, M * z / 2 - 3.2 * M - 1.5); return p; });
+const ringPath = z => cached('r' + z, () => { const p = new RecPath(); outline(p, z + 2 * RING_T, M, 1.25 * M); outline(p, z, 1.25 * M, M); return p; });
+const diffPath = z => cached('d' + z, () => { const p = new RecPath(); outline(p, z, M, 1.25 * M); circle(p, M * z / 2 - 3.2 * M - 1.5); return p; });
 // a plain disc with a keyed bore, optional lightening holes, and radial tick marks as a separate path
 const discPath = (r, n = 0, ticks = 0, inner = 0.6) => cached(`o${r}/${n}/${ticks}/${inner}`, () => {
-  const fill = new Path2D(), lines = new Path2D(), bore = boreR(r);
+  const fill = new RecPath(), lines = new RecPath(), bore = boreR(r);
   circle(fill, r); borePath(fill, bore); if (n) holes(fill, bore * 2.1, r - 2.5, n);
   for (let k = 0; k < ticks; k++) { const a = TAU * k / ticks, c = Math.cos(a), s = Math.sin(a); lines.moveTo(r * inner * c, r * inner * s); lines.lineTo(r * c, r * s); }
   if (ticks) circle(lines, r * inner);
@@ -56,19 +67,19 @@ const discPath = (r, n = 0, ticks = 0, inner = 0.6) => cached(`o${r}/${n}/${tick
 });
 const bevelPath = z => discPath(M * z / 2, 0, z, 2 / 3);
 const pulleyPath = d => cached('u' + d, () => {
-  const r = d / 2, fill = new Path2D(), lines = new Path2D(), bore = boreR(r);
+  const r = d / 2, fill = new RecPath(), lines = new RecPath(), bore = boreR(r);
   circle(fill, r + 1.5); borePath(fill, bore); holes(fill, bore * 2.1, r - 3, 5); circle(lines, r);
   return { fill, lines };
 });
 const sprocketPath = z => cached('k' + z, () => { // roller seats sit at phase + k * pitch
-  const p = new Path2D(), r = z * CP / TAU, pt = TAU / z, rr = CP * 0.28, tip = r + 0.3 * CP, pts = [];
+  const p = new RecPath(), r = z * CP / TAU, pt = TAU / z, rr = CP * 0.28, tip = r + 0.3 * CP, pts = [];
   for (let k = 0; k < z; k++) { const a = k * pt; pts.push([r - rr, a - 0.1 * pt], [r - rr, a + 0.1 * pt], [r + 0.4, a + 0.26 * pt], [tip, a + 0.42 * pt], [tip, a + 0.58 * pt], [r + 0.4, a + 0.74 * pt]); }
   polar(p, pts);
   const bore = boreR(r); borePath(p, bore); holes(p, bore * 2.1, r - rr - 3, 5);
   return p;
 });
 const flywheelPath = d => cached('f' + d, () => {
-  const p = new Path2D(), r = d / 2, ro = r - Math.max(6, r * 0.24), ri = r * 0.3;
+  const p = new RecPath(), r = d / 2, ro = r - Math.max(6, r * 0.24), ri = r * 0.3;
   circle(p, r); borePath(p, boreR(r));
   for (let k = 0; k < 6; k++) { const a0 = TAU * k / 6 + 0.16, a1 = TAU * (k + 1) / 6 - 0.16; p.moveTo(ro * Math.cos(a0), ro * Math.sin(a0)); p.arc(0, 0, ro, a0, a1); p.arc(0, 0, ri, a1 - 0.2, a0 + 0.2, true); p.closePath(); }
   return p;
@@ -76,20 +87,20 @@ const flywheelPath = d => cached('f' + d, () => {
 // sawtooth wheel radius at wheel-frame angle a; the ramp direction decides which way it can turn under the pawl
 const ratchetR = (g, a) => RO(g) - 3.2 + 3.2 * mod((g.on ? 1 : -1) * a * g.z / TAU, 1);
 const ratchetPath = (z, s) => cached(`t${z}/${s}`, () => {
-  const p = new Path2D(), ra = M * z / 2, rf = ra - 3.2, pt = TAU / z, pts = [];
+  const p = new RecPath(), ra = M * z / 2, rf = ra - 3.2, pt = TAU / z, pts = [];
   for (let k = 0; k < z; k++) pts.push(s < 0 ? [rf, k * pt] : [ra, k * pt], s < 0 ? [ra, k * pt] : [rf, k * pt]);
   polar(p, pts); const bore = boreR(ra); borePath(p, bore); holes(p, bore * 2.1, rf - 2, 4);
   return p;
 });
 const camLift = (h, a) => { a = wrap(a); return Math.abs(a) < TAU / 3 ? h * Math.cos(0.75 * a) ** 2 : 0; };
 const camPath = h => cached('c' + h, () => {
-  const p = new Path2D(), pts = [];
+  const p = new RecPath(), pts = [];
   for (let i = 0; i < 120; i++) { const a = TAU * i / 120; pts.push([CB + camLift(h, a), a]); }
   polar(p, pts); borePath(p, 3.2);
   return p;
 });
 const genevaPath = n => cached('g' + n, () => { // slot 0 points along +x
-  const p = new Path2D(), c = GA / Math.sin(Math.PI / n), b = c * Math.cos(Math.PI / n), s0 = c - GA - 1.4, w = 3.8, rl = GA - 3, pts = [], st = TAU / n;
+  const p = new RecPath(), c = GA / Math.sin(Math.PI / n), b = c * Math.cos(Math.PI / n), s0 = c - GA - 1.4, w = 3.8, rl = GA - 3, pts = [], st = TAU / n;
   for (let i = 0; i < 1440; i++) {
     const a = TAU * i / 1440, ds = wrap(a - st * Math.round(a / st)), dc = wrap(a - st * (Math.floor(a / st) + 0.5));
     let R = b;
@@ -146,7 +157,7 @@ function route(ws, crossed) {
     if (tr.length < 2) return null;
     tr.forEach((t, k) => arcs.push({ w: t.to, a0: t.ang, a1: k + 1 < tr.length ? tr[k + 1].ang : tr[0].ang + TAU, s: 1 }));
   }
-  const path = new Path2D(), on = new Map(), pt = (c, a) => [c.w.x + RO(c.w) * Math.cos(a), c.w.y + RO(c.w) * Math.sin(a)];
+  const path = new RecPath(), on = new Map(), pt = (c, a) => [c.w.x + RO(c.w) * Math.cos(a), c.w.y + RO(c.w) * Math.sin(a)];
   let L = 0;
   arcs.forEach((c, k) => {
     const len = RO(c.w) * Math.abs(c.a1 - c.a0), nx = arcs[(k + 1) % arcs.length], e = pt(c, c.a1), b = pt(nx, nx.a0);

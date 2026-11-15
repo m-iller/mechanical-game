@@ -1,5 +1,21 @@
 # Changelog
 
+## 3.1.0
+
+### Added
+- **Scene files**: save to and open from `.gearbench` files (Ctrl+S, Ctrl+O, drag and drop), a name for the scene.
+- **Export**: the scheme as PNG or SVG; a **calculation report** in HTML or Markdown with every figure, its formula, inputs and assumptions.
+- **Palette of parts** with pictures, groups and search; tiles can be dragged onto the sheet.
+- **Gallery of examples** with previews; it opens on a first visit and from the header.
+- **Graph "what depends on what"**: one number of a part is run through a range and any figure of the scene is plotted against it; CSV export.
+- **Ruler** (M), alignment guides while dragging, "in a row / in a column / spread" for a selection.
+- **Right-button menu**, a sheet of keys (`?`), a light / dark switch.
+- Info windows can be **kept next to their part** and are **saved with the scene**; rings are shown in the side view too.
+
+### Fixed
+- The status line and the list of parts now count links of a driven mechanism and cylinders under flow as moving (they were shown as "free").
+- The introduction in the header described version 2.
+
 ## 3.0.0
 
 Gear Bench is growing from a drive sandbox into a rough-figures tool for mechanical engineering. Plan and status: `docs/ROADMAP.md`, `docs/PROGRESS.md`.

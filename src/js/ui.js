@@ -304,6 +304,7 @@ function renderSel() {
       body.firstChild.nextSibling.firstChild.className = 'primary';
     } else if (!ps.length) body.append(el('p', t('sel.hint'), { className: 'hint' }));
     else if (!p) {
+      body.append(alignRow());
       const wheels = ps.every(q => q.type === ps[0].type && q.layer === ps[0].layer) && ty(ps[0], 'pulley', 'sprocket');
       body.append(labelled(t('sel.layer'), layerSeg(ps.every(q => q.layer === ps[0].layer) ? ps[0].layer : -1, l => { for (const q of ps) setLayer(q, l); commit(); })),
         rowOf(btn('⟲ 15°', () => rotateSel(-15)), btn('⟳ 15°', () => rotateSel(15)), btn(t('btn.duplicate'), duplicateSel)),
@@ -355,10 +356,18 @@ function renderSel() {
       if (p.load) body.append(...loadFields(p));
       const dl = el('dl'); dl.dataset.why = p.id + ':'; body.append(dl); selRefresh.push(() => fillDl(dl, [...(p.load ? loadRows(p) : []), ...specRows(p)]));
       const rm = btn(t('btn.remove'), removeSel); rm.className = 'danger';
-      body.append(rowOf(!isShaft(p) && !p.motor && btn(t(outId === p.id ? 'btn.clearOut' : 'btn.setOut'), () => { outId = outId === p.id ? null : p.id; ui(); save(); }, outId === p.id), btn(t('btn.duplicate'), duplicateSel), rm));
+      body.append(rowOf(!isShaft(p) && !p.motor && btn(t(outId === p.id ? 'btn.clearOut' : 'btn.setOut'), () => { outId = outId === p.id ? null : p.id; ui(); save(); }, outId === p.id), btn(t('btn.duplicate'), duplicateSel), btn(t('btn.sweep'), () => openSweep(p)), rm));
     }
   }
   selRefresh.forEach(f => f());
+}
+// does the part move at all: turns, or is a link of a mechanism that is being driven, or a cylinder under flow
+function isMoving(p) {
+  if (isDriven(p)) return true;
+  if (p.type === 'hcyl') { const r = hyd.part.get(p.id); if (r && Math.abs(r.v) > 1e-9) return true; }
+  if (!isLink(p) || ty(p, 'pivot', 'guide')) return false;
+  const c = RIDERS.includes(p.type) ? camOf(p) : crankOf(p); if (c && c.w) return true;
+  const g = tmmInfo.of.get(p.id); return !!g && g.ids.some(id => { const q = byId(id), r = q && q.type === 'hcyl' && hyd.part.get(id); return r && Math.abs(r.v) > 1e-9; });
 }
 function ui() {
   $('run').textContent = running ? t('btn.pause') : t('btn.run'); press($('run'), !running);
@@ -367,10 +376,10 @@ function ui() {
   infoSync();
   if (why && !whySeen) why = null;   // the figure it explained is gone
   renderWhy();
-  const moving = parts.filter(p => !isShaft(p) && isDriven(p)).length, total = parts.filter(p => !isShaft(p)).length;
+  const moving = parts.filter(p => !isShaft(p) && isMoving(p)).length, total = parts.filter(p => !isShaft(p)).length;
   const err = (warnings.find(w => w.level === 'error') || {}).text || (tmmStuck ? t('w.linkStuck') : '');
   $('status').className = 'status' + (linkDraft ? '' : lockMsg || err ? ' locked' : !running ? ' paused' : '');
-  $('status-text').textContent = pipeDraft ? t(pipeDraft.a == null ? 'hy.pickFirst' : 'hy.pickNext') : linkDraft ? t('status.link') : !total ? t('status.empty') : lockMsg ? lockMsg : err ? err : hintMsg ? hintMsg : !running ? t('status.paused') : t('status.running', { n: moving, m: total });
+  $('status-text').textContent = measure ? t('ms.hint') : pipeDraft ? t(pipeDraft.a == null ? 'hy.pickFirst' : 'hy.pickNext') : linkDraft ? t('status.link') : !total ? t('status.empty') : lockMsg ? lockMsg : err ? err : hintMsg ? hintMsg : !running ? t('status.paused') : t('status.running', { n: moving, m: total });
   const nt = TYPES[$('new-type').value], nz = $('new-z'); $('new-size-row').hidden = !nt.key;
   if (nt.key) { nz.min = nt.lim[0]; nz.max = nt.lim[1]; nz.step = nt.lim[2]; const nn = $('new-z-num'); nn.min = nz.min; nn.max = nz.max; nn.step = nz.step; if (document.activeElement !== nn) nn.value = nz.value; $('new-z-lab').textContent = t('size.' + $('new-type').value); }
   $('new-layer').textContent = t('add.onLayer', { l: LET(activeLayer) });
@@ -381,7 +390,7 @@ function ui() {
   for (const p of parts) {
     const b = el('button', null, { onclick: e => pick([p.id], e.shiftKey) });
     b.className = (sel.has(p.id) ? 'sel ' : '') + (p === out ? 'out ' : '') + (collide.has(p.id) ? 'bad' : p.motor ? 'drv' : '');
-    for (const s of [p.name, sizeText(p), isShaft(p) ? '' : LET(p.layer), isShaft(p) ? (p.w ? `${p.w > 0 ? '+' : '−'}${fmt(Math.abs(p.w))}` : '') : speedText(p, false)]) b.append(el('span', s));
+    for (const s of [p.name, sizeText(p), isShaft(p) ? '' : LET(p.layer), isShaft(p) ? (p.w ? `${p.w > 0 ? '+' : '−'}${fmt(Math.abs(p.w))}` : '') : isLink(p) && !isDriver(p) || (isPlant(p) && !isVert(p)) ? (isMoving(p) ? t('s.moves') : '') : speedText(p, false)]) b.append(el('span', s));
     tr.append(b);
   }
 }
@@ -392,12 +401,14 @@ function renderWarns() {
 function applyLang() {
   document.documentElement.lang = lang;
   for (const n of document.querySelectorAll('[data-t]')) n.textContent = t(n.dataset.t);
-  for (const n of document.querySelectorAll('[data-t-label]')) n.setAttribute('aria-label', t(n.dataset.tLabel));
+  for (const n of document.querySelectorAll('[data-t-label]')) { n.setAttribute('aria-label', t(n.dataset.tLabel)); if (n.tagName === 'BUTTON') n.title = t(n.dataset.tLabel); }
+  for (const n of document.querySelectorAll('[data-t-ph]')) n.placeholder = t(n.dataset.tPh);
   $('lang').textContent = lang === 'ru' ? 'EN' : 'RU';
   const fillSel = (s, groups) => { const v = s.value; s.textContent = ''; for (const [g, items] of groups) { const og = g ? el('optgroup', null, { label: g }) : s; for (const [val, label] of items) og.append(el('option', label, { value: val })); if (g) s.append(og); } if (v) s.value = v; };
   fillSel($('new-type'), GROUPS.map(g => [t('grp.' + g), Object.keys(TYPES).filter(k => TYPES[k].grp === g).map(k => [k, t('type.' + k)])]));
   fillSel($('tpl'), [['', Object.keys(TEMPLATES).map(k => [k, t('tpl.' + k)])]]);
   motorsKey = selKey = '';
+  if (typeof renderPalette === 'function') { renderPalette(); themeLabel(); }
 }
 
 /* ---------- editing ---------- */
@@ -803,13 +814,15 @@ function hit(p) {
   return vis.find(g => isShaft(g) && Math.hypot(w.x - g.x, w.y - g.y) < 3.2) || vis.filter(g => !isShaft(g)).sort((a, b) => b.layer - a.layer || rank(a) - rank(b)).find(g => hitTop(g, w));
 }
 cv.addEventListener('pointerdown', e => {
+  if (e.button === 2) return;   // the right button opens a menu, see tools.js
   cv.setPointerCapture(e.pointerId); const p = pos(e); pts.set(e.pointerId, p); clearTimeout(holdTimer);
   if (pts.size === 2) { drag = pan = boxSel = null; const [a, b] = [...pts.values()]; pinch = { d: Math.hypot(a.x - b.x, a.y - b.y) || 1, scale: view.scale, w: toWorld((a.x + b.x) / 2, (a.y + b.y) / 2), side: (a.y + b.y) / 2 < bandH() }; return; }
   if (nearSplit(p)) { splitDrag = true; return; }   // the border between the two views
   const side = p.y < bandH();
   if (side && p.x < 46) { const l = Math.floor((baseY() - p.y) / view.scale / LP + 0.2); if (l >= 0 && l < layerCount) { setActive(l); return; } }   // a layer's letter in the side view makes it active
   if (pipeDraft) { pipeClick(side ? sidePoint(p) : toWorld(p.x, p.y)); return; }
-  const mk = !linkDraft && !side && markerAt(p);
+  if (measure && !side) { measureClick(toWorld(p.x, p.y)); return; }
+  const mk = !linkDraft && markerAt(p);
   if (mk) { infoToggle(mk.key, mk); return; }
   if (!linkDraft && !side && !e.shiftKey) { // a click on a free port starts a pipe from it
     const port = portAt(toWorld(p.x, p.y), Math.max(2, 5 / view.scale));
@@ -881,7 +894,8 @@ cv.addEventListener('pointermove', e => {
     if (!drag.moved) { drag.moved = true; freeze(); if (g.mount) delete g.mount; }
     if (drag.side) { sideDrag(p); changed(); return; }
     if (drag.link) { linkDrag(w); changed(); return; }
-    const s = drag.others.length ? { x: w.x - drag.dx, y: w.y - drag.dy } : snap(g, w.x - drag.dx, w.y - drag.dy);
+    let s = drag.others.length ? { x: w.x - drag.dx, y: w.y - drag.dy } : snap(g, w.x - drag.dx, w.y - drag.dy);
+    guides = []; if (!e.altKey && !s.mount && s.dir == null && s.x === w.x - drag.dx && s.y === w.y - drag.dy) s = alignSnap(g, s.x, s.y, new Set(drag.others.map(o => o.q.id)));   // nothing to snap into: stand level with a neighbour
     g.x = s.x; g.y = s.y; if (s.dir != null) g.dir = s.dir; drag.mount = s.mount || null;
     for (const o of drag.others) { o.q.x = g.x + o.ox; o.q.y = g.y + o.oy; }
     changed();
@@ -939,7 +953,7 @@ const up = e => {
     const g = drag.g, u = unit(g.dir || 0), lx = (drag.w0.x - g.x) * u[0] + (drag.w0.y - g.y) * u[1]; g.pos = lx < -6 ? 1 : lx > 6 ? -1 : 0; commit();
   }
   if (drag && drag.moved) { const g = drag.g; if (drag.link) tmmAttach(drag.link.ids); if (drag.mount) g.mount = drag.mount; else if (!drag.others.length) autoShaft(g); commit(); }
-  drag = pan = null; if (pts.size < 2) pinch = null; cv.classList.remove('dragging');
+  drag = pan = null; guides = []; if (pts.size < 2) pinch = null; cv.classList.remove('dragging');
 };
 cv.addEventListener('pointerup', up); cv.addEventListener('pointercancel', up);
 cv.addEventListener('wheel', e => { e.preventDefault(); const p = pos(e); zoomAt(p.x, p.y, Math.exp(-e.deltaY * 0.0015)); }, { passive: false });
@@ -1000,10 +1014,13 @@ addEventListener('keydown', e => {
 /* ---------- start ---------- */
 function start(d) {
   let ok = false;
-  try { const src = d && d.parts ? d : JSON.parse(localStorage.getItem(STORE) || 'null'); if (src && Array.isArray(src.parts) && src.parts.length) { load(src); ok = true; } } catch (e) {}
-  if (!ok) example();
+  let first = false, info = null;
+  try { const src = d && d.parts ? d : JSON.parse(localStorage.getItem(STORE) || 'null'); if (src && Array.isArray(src.parts) && src.parts.length) { load(src); ok = true; info = src.info; } } catch (e) {}
+  if (!ok) { example(); first = true; }
   running = !matchMedia('(prefers-reduced-motion: reduce)').matches;
-  readTokens(); resize(); applyLang(); $('new-type').onchange(); place(); solve(); fit(); ui(); saveHook(JSON.stringify(serialize()));
+  readTokens(); resize(); applyLang(); $('new-type').onchange(); place(); solve(); fit(); ui(); saveHook(coreJson());
+  paletteIcons(); renderPalette(); setSceneName(sceneName); infoRestore(info);
+  if (first && !(d && d.parts)) openGallery();   // a first visit starts from the examples
   new ResizeObserver(resize).observe(sheet);
   matchMedia('(prefers-color-scheme: dark)').addEventListener('change', readTokens);
   new MutationObserver(readTokens).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
@@ -1027,6 +1044,3 @@ function start(d) {
 }
 // small hook for automated checks
 window.__bench = { infoOpen, infoWins, markers: () => markers, layout, undo, redo, copySel, pasteSel, hist, state: () => ({ lock: lockMsg, hint: hintMsg, io: ioRows(), warnings: warnings.map(w => [w.level, w.code]), parts: parts.map(p => ({ name: p.name, w: +outOf(p).w.toFixed(4), und: p.und })) }), parts: () => parts, solve, pick };
-const hot = window.claude && window.claude.hot;
-if (hot && hot.snapshot) hot.snapshot(() => serialize());
-if (hot && hot.ready) hot.ready(start); else start(hot && hot.data ? hot.data : null);

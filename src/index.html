@@ -13,7 +13,12 @@
     <h1>Gear Bench</h1>
     <p data-t="intro"></p>
     <div class="hbtns">
+      <input type="text" id="scene-name" class="text" maxlength="80" data-t-ph="file.name" data-t-label="file.name">
+      <button id="file" data-t="btn.file"></button>
+      <button id="examples" data-t="file.examples"></button>
       <button class="primary" id="run"></button>
+      <button id="theme" data-t-label="btn.theme"></button>
+      <button id="help" data-t-label="btn.help">?</button>
       <button id="lang" aria-label="Language / Язык"></button>
     </div>
   </header>
@@ -50,6 +55,8 @@
       </section>
       <section>
         <h2><span data-t="sec.add"></span> <b id="new-layer"></b></h2>
+        <input type="search" id="pal-q" class="text" data-t-ph="pal.search" data-t-label="pal.search">
+        <div id="palette" class="palette"></div>
         <div class="row"><select id="new-type" data-t-label="sec.add"></select><button id="add" data-t="btn.add"></button></div>
         <div class="row" id="new-size-row">
           <label for="new-z-num"><span id="new-z-lab"></span></label>
@@ -75,6 +82,20 @@
       </section>
     </div>
   </main>
+</div>
+<div class="modal" id="gallery" hidden role="dialog" aria-modal="true">
+  <div class="modal-box">
+    <h2><span data-t="gal.title"></span><button id="gal-x" data-t-label="btn.cancel">×</button></h2>
+    <p class="hint" data-t="gal.hint"></p>
+    <div id="gal-grid" class="gal-grid"></div>
+    <div class="row"><button id="gal-empty" data-t="gal.empty"></button></div>
+  </div>
+</div>
+<div class="modal" id="keys" hidden role="dialog" aria-modal="true">
+  <div class="modal-box narrow">
+    <h2><span data-t="keys.title"></span><button id="keys-x" data-t-label="btn.cancel">×</button></h2>
+    <dl id="keys-list" class="keys"></dl>
+  </div>
 </div>
 <script src="js/strings.js"></script>
 <script src="js/core/units.js"></script>
@@ -106,5 +127,10 @@
 <script src="js/templates.js"></script>
 <script src="js/windows.js"></script>
 <script src="js/ui.js"></script>
+<script src="js/render.js"></script>
+<script src="js/files.js"></script>
+<script src="js/palette.js"></script>
+<script src="js/tools.js"></script>
+<script src="js/boot.js"></script>
 </body>
 </html>

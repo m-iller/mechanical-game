@@ -95,7 +95,7 @@ function reportData() {
 function reportMarkdown() {
   const d = reportData(), out = [`# ${d.name}`, '', `${t('rep.made')} Gear Bench, ${d.date}. ${t('rep.rough')}`, ''];
   const table = rows => { out.push(`| ${t('rep.what')} | ${t('rep.value')} |`, '|---|---|'); for (const r of rows) out.push(`| ${r.k} | ${String(r.v).replace(/\|/g, '/')} |`); out.push(''); for (const r of rows) if (r.why) out.push(`- **${r.k}**: ${r.why.map(l => l.replace(/^• /, '')).join('; ')}`); out.push(''); };
-  out.push(`## ${t('rep.total')}`, ''); table(d.total);
+  if (d.total.length) { out.push(`## ${t('rep.total')}`, ''); table(d.total); }
   if (d.warns.length) { out.push(`## ${t('sec.warn')}`, ''); for (const w of d.warns) out.push(`- ${w}`); out.push(''); }
   for (const s of d.secs) { out.push(`## ${s.title}`, ''); table(s.rows); }
   return out.join('\n');
@@ -111,7 +111,7 @@ table{border-collapse:collapse;width:100%} th,td{border:1px solid #b4c2c3;paddin
 td.why{width:54%;color:#3d5059;font-size:12px} ul{margin:6px 0;padding-left:20px} tr{break-inside:avoid}
 @media print{body{margin:0;max-width:none} h2{margin-top:14px}}
 </style><h1>${esc(d.name)}</h1><p class="sub">${esc(t('rep.made'))} Gear Bench, ${esc(d.date)}. ${esc(t('rep.rough'))}</p><img alt="" src="${img}">
-<h2>${esc(t('rep.total'))}</h2>${table(d.total)}${d.warns.length ? `<h2>${esc(t('sec.warn'))}</h2><ul>${d.warns.map(w => `<li>${esc(w)}</li>`).join('')}</ul>` : ''}
+${d.total.length ? `<h2>${esc(t('rep.total'))}</h2>${table(d.total)}` : ''}${d.warns.length ? `<h2>${esc(t('sec.warn'))}</h2><ul>${d.warns.map(w => `<li>${esc(w)}</li>`).join('')}</ul>` : ''}
 ${d.secs.map(s => `<h2>${esc(s.title)}</h2>${table(s.rows)}`).join('\n')}</html>`;
 }
 async function exportReport(kind) {

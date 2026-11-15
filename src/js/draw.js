@@ -40,7 +40,9 @@ function fit() {
     const c = Math.cos(p.dir || 0), s = Math.sin(p.dir || 0), b = boxOf(p), r = tipR(p), e = reach(p);
     if (b) box(p.x, p.y, Math.abs(c) * b[0] + Math.abs(s) * b[1], Math.abs(s) * b[0] + Math.abs(c) * b[1]);
     else { box(p.x, p.y, r, r); if (e) box(p.x + c * e, p.y + s * e, 8, 8); }
+    if (isLink(p)) jointsOf(p).forEach((_, k) => { const q = jointPos(p, k); box(q.x, q.y, 4, 4); });   // a link reaches as far as its joints
   }
+  for (const q of pipes) { const a = byId(q.a); if (a && shown(a)) for (const v of q.pts) box(v[0], v[1], 2, 2); }
   view.cx = (x0 + x1) / 2; view.cy = (y0 + y1) / 2;
   const sx = W / (x1 - x0);
   if (viewMode === 'side') view.scale = Math.min(sx, (H - 80) / (layerCount * LP + 30));
